@@ -1,0 +1,19 @@
+{
+  "name": "vanishing-cubes",
+  "version": "1.0.0",
+  "description": "Vanishing Cubes — a 3D direction puzzle. Rotate a floating cube assembly and release blocks whose arrow path is clear.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/run-tests.js",
+    "smoke": "node tests/smoke.mjs",
+    "captures": "node tests/captures.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.62.1"
+  }
+}
