@@ -115,6 +115,7 @@ const app = {
   selectedCubeId: null,
   hoveredCubeId: null,
   finishing: false,
+  warnedTime: false,
   hiddenAt: null,
   dragMode: false,
   countdownTimer: null,
@@ -194,6 +195,7 @@ function prepareRound(params) {
   app.lesson = null;
   app.tutorialStep = 0;
   app.finishing = false;
+  app.warnedTime = false;
   app.selectedCubeId = null;
   app.hoveredCubeId = null;
 
@@ -298,6 +300,7 @@ function activateRound() {
   app.session.startStamp = performance.now();
   app.session.pausedAccum = 0;
   transition('active', 'countdown done', 'controller');
+  audio.play('round-start');
   showScreen('game');
   announce(
     `${app.level.name}. ${remainingArrows(app.session.state)} cubes to release. ` +
@@ -309,6 +312,14 @@ function activateRound() {
     if (app.state !== 'active') return;
     app.session.tickClock();
     updateClock(app.session);
+    const limit = app.session.state.limits.timeMs;
+    if (limit != null && !app.warnedTime) {
+      const left = limit - app.session.activeMs();
+      if (left > 0 && left <= 5000) {
+        app.warnedTime = true;
+        audio.play('timer-warning');
+      }
+    }
   }, 250);
 }
 
@@ -321,6 +332,8 @@ function onSessionEvents(events, state) {
       case 'release': {
         audio.play('release');
         const left = remainingArrows(state);
+        const movesLeft = state.limits.moves == null ? null : state.limits.moves - state.stats.taps;
+        if (movesLeft === 3) audio.play('move-limit');
         announce(`Cube released. ${left} left.`);
         audio.setMusicIntensity(0.3 + 0.7 * (state.stats.released / (state.stats.released + left || 1)));
         if (!settings.accessibility.hapticsOff && navigator.vibrate) navigator.vibrate(8);
@@ -403,6 +416,7 @@ function checkTutorialEvent(ev, state) {
     app.tutorialStep++;
   }
   if (app.tutorialStep !== before && app.tutorialStep < app.lesson.steps.length) {
+    audio.play('tutorial-done');
     setTimeout(showTutorialStep, 250);
   }
 }
@@ -436,8 +450,10 @@ async function finishRound() {
   if (app.mode === 'learn' && completed) {
     progression.tutorials[app.lesson.id] = true;
   }
+  let newlyCleared = false;
   if (app.mode === 'journey') {
     const stars = result.stars;
+    newlyCleared = completed && !progression.journeyStars[app.level.id];
     if (completed && (progression.journeyStars[app.level.id] || 0) < stars) {
       progression.journeyStars[app.level.id] = stars;
     }
@@ -534,6 +550,16 @@ async function finishRound() {
     previousBest: prevBest,
     nextLabel,
   });
+  if (completed) {
+    audio.play('level-win');
+    if (result.stars > 0) audio.play('star-' + result.stars);
+    if (app.mode === 'journey' && newlyCleared) {
+      const chapterCleared = LEVEL_DEFS.filter((d) => d.chapter === app.level.chapter)
+        .every((d) => (progression.journeyStars[d.id] || 0) > 0);
+      if (chapterCleared) audio.play('chapter-complete');
+    }
+  }
+  if (prevBest != null && result.score > prevBest) audio.play('new-record');
   transition('results', 'results shown', 'controller');
   showScreen('results');
   if (app.scene) app.scene.stop(); // nothing visible to render behind results
@@ -613,6 +639,7 @@ function cycleSelection(dirSign) {
   if (!app.session) return;
   const acts = legalActions(app.session.state).map((a) => a.cubeId).sort();
   if (!acts.length) {
+    audio.play('error');
     announce('No clear paths right now.');
     return;
   }
@@ -644,7 +671,7 @@ function doUndo() {
     app.selectedCubeId = null;
     refreshHUD();
     refreshBoardMirror();
-    audio.play('ui');
+    audio.play('undo');
   }
 }
 
@@ -653,7 +680,10 @@ function doHint() {
   const hint = app.session.hint();
   if (hint) {
     selectCube(hint.cubeId);
+    audio.play('hint');
     toast(`Hint: cube ${hint.cubeId} has a clear path.`);
+  } else {
+    audio.play('error');
   }
 }
 
@@ -662,6 +692,7 @@ function doHint() {
 function pauseGame(reason) {
   if (app.state !== 'active' || !app.session) return;
   app.session.pause();
+  audio.play('pause');
   transition('paused', reason, 'controller');
   openModal($('modal-pause'));
   $('btn-resume').focus();
@@ -670,6 +701,7 @@ function pauseGame(reason) {
 
 function resumeGame() {
   if (app.state !== 'paused') return;
+  audio.play('resume');
   closeModal($('modal-pause'));
   app.session.resume();
   transition('active', 'resumed', 'controller');
@@ -699,6 +731,7 @@ function exitToModes() {
 function openTitle() {
   transition('title', 'show title', 'controller');
   showScreen('title');
+  audio.play('menu-open');
   if (app.scene) app.scene.stop();
   const stars = totalStars();
   const done = Object.keys(progression.journeyStars).length;
@@ -718,6 +751,7 @@ function openModeSelect() {
     dailyKey: platform.utcDateKey(),
     dailyDone: !!progression.dailies[platform.utcDateKey()]?.completed,
   }, (mode) => {
+    audio.play('confirm');
     if (mode === 'score-chase') {
       openScores();
     } else {
@@ -760,7 +794,10 @@ function openSetup(mode) {
       doneToday: progression.dailies[dateKey] || null,
     },
     platformInfo: { hosted: platform.hosted },
-  }, (params) => prepareRound(params));
+  }, (params) => {
+    audio.play('confirm');
+    prepareRound(params);
+  });
 }
 
 function openScores() {
@@ -815,6 +852,7 @@ function onSettingChange(key, value) {
     progression.theme = value;
     saveProgression();
     applyThemeNow();
+    audio.play('settings-saved');
   } else if (key === 'replay-tutorial') {
     saveSettings();
     openSetup('learn');
@@ -1085,6 +1123,7 @@ function wireButtons() {
 
   document.querySelectorAll('[data-nav]').forEach((btn) => {
     btn.addEventListener('click', () => {
+      audio.play('back');
       const target = btn.getAttribute('data-nav');
       if (target === 'title') openTitle();
       else if (target === 'modes') openModeSelect();
@@ -1146,7 +1185,10 @@ function wireButtons() {
       openModeSelect();
     }
   });
-  $('btn-results-exit').addEventListener('click', openModeSelect);
+  $('btn-results-exit').addEventListener('click', () => {
+    audio.play('back');
+    openModeSelect();
+  });
 
   $('btn-accessible-mode').addEventListener('click', () => {
     app.accessibleOnly = true;
@@ -1154,6 +1196,24 @@ function wireButtons() {
     refreshBoardMirror();
     openModal($('modal-board'));
   });
+
+  // Soft tick when hovering/focusing interactive elements.
+  let lastHoverEl = null;
+  document.addEventListener('mouseover', (ev) => {
+    const el = ev.target.closest('button, input, select, a');
+    if (el === lastHoverEl) return;
+    lastHoverEl = el;
+    if (el) audio.play('hover');
+  });
+
+  // Ratchet ticks while scrolling lists and level grids.
+  let lastScrollTick = 0;
+  window.addEventListener('scroll', () => {
+    const now = performance.now();
+    if (now - lastScrollTick < 140) return;
+    lastScrollTick = now;
+    audio.play('scroll');
+  }, { passive: true });
 }
 
 function resumeSnapshot(snapJson) {

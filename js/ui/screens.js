@@ -9,6 +9,7 @@ import { THEMES } from '../content/themes.js';
 import { DEFAULT_BINDINGS, bindingLabel, effectiveKeys } from './bindings.js';
 import { formatMs } from './hud.js';
 import { closeModal } from './a11y.js';
+import { audio } from '../audio/audio.js';
 
 const SCREENS = ['title', 'modes', 'setup', 'game', 'results', 'scores', 'help'];
 
@@ -518,7 +519,10 @@ function slider(value, onInput) {
   s.max = '1';
   s.step = '0.05';
   s.value = String(value);
-  s.addEventListener('input', () => onInput(Number(s.value)));
+  s.addEventListener('input', () => {
+    audio.play('slider');
+    onInput(Number(s.value));
+  });
   return s;
 }
 
@@ -527,7 +531,10 @@ function checkbox(value, onInput, label = '') {
   c.type = 'checkbox';
   c.checked = !!value;
   if (label) c.setAttribute('aria-label', label);
-  c.addEventListener('change', () => onInput(c.checked));
+  c.addEventListener('change', () => {
+    audio.play('toggle');
+    onInput(c.checked);
+  });
   return c;
 }
 

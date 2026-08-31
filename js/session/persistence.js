@@ -56,8 +56,14 @@ function rawGet(key) {
   return hasStorage ? localStorage.getItem(key) : memoryFallback.get(key) ?? null;
 }
 function rawSet(key, value) {
-  if (hasStorage) localStorage.setItem(key, value);
-  else memoryFallback.set(key, value);
+  // A full storage quota must never crash a save — degrade to a warning,
+  // matching the snapshot writer's "storage full — non-fatal" policy.
+  try {
+    if (hasStorage) localStorage.setItem(key, value);
+    else memoryFallback.set(key, value);
+  } catch (err) {
+    console.warn('persistence: write failed for', key, err);
+  }
 }
 
 export function loadDoc(name, fallback) {

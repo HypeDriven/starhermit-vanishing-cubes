@@ -196,7 +196,17 @@ export class GameSession {
     s.log = data.log;
     s.hashes = data.hashes;
     s.seenIds = new Set(data.log.map((c) => c.id));
-    s.cmdSeq = data.log.length;
+    // Command IDs are `sessionId + '-' + seq`. Undo truncates the log without
+    // rewinding the counter, and failed dispatches consume a sequence number,
+    // so `log.length` can collide with an ID still present in `seenIds` —
+    // the next real command would be dropped as a duplicate. Resume above
+    // the highest sequence ever issued instead.
+    let maxSeq = -1;
+    for (const c of data.log) {
+      const m = /-(\d+)$/.exec(c.id);
+      if (m) maxSeq = Math.max(maxSeq, Number(m[1]));
+    }
+    s.cmdSeq = Math.max(data.log.length, maxSeq + 1);
     s.startedAtUnixMs = data.startedAtUnixMs;
     s.finished = data.finished;
     // Continue the authoritative clock from the saved offset.

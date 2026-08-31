@@ -47,6 +47,7 @@ const MAX_BODY_BYTES = 256 * 1024;
 const MAX_BOARD_ENTRIES = 200;
 const MAX_NAME_LEN = 24;
 const MAX_PLAUSIBLE_SCORE = 500000; // casual claims without a replay
+const MIN_MS_PER_TAP = 120; // minimal human cadence for ranked replays
 
 // ---------------------------------------------------------------------------
 // storage
@@ -232,7 +233,16 @@ function verifySubmission(entry) {
   if (!verdict.ok) return bad('replay-' + verdict.reason);
   if (verdict.result.score !== entry.score) return bad('score-mismatch');
   if (verdict.result.completed !== entry.completed) return bad('completion-mismatch');
-  return { status: casual ? 'casual' : 'validated' };
+  // Every ordering-relevant field must match the validated replay — the
+  // client's `invalid`/`elapsedMs` claims are untrusted (spec.md §5).
+  if (verdict.result.invalid !== entry.invalid) return bad('invalid-mismatch');
+  if (verdict.result.elapsedMs !== entry.elapsedMs) return bad('elapsed-mismatch');
+  // Client command timestamps are untrusted: the claimed pace must cover a
+  // minimal human cadence per tap, otherwise the under-par time bonus is
+  // forgeable by rewriting every command's `at` field toward zero.
+  const taps = verdict.result.released + verdict.result.invalid;
+  if (verdict.result.elapsedMs < taps * MIN_MS_PER_TAP) return bad('implausibly-fast');
+  return { status: casual ? 'casual' : 'validated', result: verdict.result };
 }
 
 // ---------------------------------------------------------------------------
@@ -341,8 +351,9 @@ const api = {
       name: entry.name,
       score: entry.score,
       completed: entry.completed,
-      invalid: entry.invalid,
-      elapsedMs: entry.elapsedMs,
+      // Ranked ordering fields come from the validated replay, not the claim.
+      invalid: verdict.result ? verdict.result.invalid : entry.invalid,
+      elapsedMs: verdict.result ? verdict.result.elapsedMs : entry.elapsedMs,
       sessionId: entry.sessionId,
       ruleset: String(entry.ruleset || '').slice(0, 24),
       contentVersion: entry.contentVersion,
@@ -352,7 +363,7 @@ const api = {
         hint: !!(entry.assists && entry.assists.hint),
         timingAssist: !!(entry.assists && entry.assists.timingAssist),
       },
-      durationMs: entry.elapsedMs,
+      durationMs: verdict.result ? verdict.result.elapsedMs : entry.elapsedMs,
       validated: verdict.status === 'validated',
       at: Date.now(),
     };
@@ -436,6 +447,7 @@ const MIME = {
   '.ico': 'image/x-icon',
   '.webmanifest': 'application/manifest+json',
   '.map': 'application/json',
+  '.opus': 'audio/ogg',
 };
 
 // Never served: design docs, server config, tests, data, VCS, dotfiles.

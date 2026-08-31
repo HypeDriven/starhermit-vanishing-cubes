@@ -5,6 +5,50 @@
 
 import { Rng } from '../rules/rng.js';
 
+// Logical event -> recorded sample in sfx/ (see sfx/manifest.md). Samples are
+// lazy-fetched, decoded, and cached after the user-gesture unlock; while a
+// sample is loading (or fails) the event falls back to the procedural synth
+// sounds below.
+const SFX_FILES = {
+  ui: 'ui-click',
+  tap: 'ui-click',
+  hover: 'ui-hover',
+  confirm: 'ui-confirm',
+  back: 'ui-back',
+  error: 'ui-error',
+  achievement: 'ui-success',
+  'modal-open': 'ui-modal-open',
+  'panel-close': 'ui-panel-close',
+  toast: 'ui-toast',
+  toggle: 'ui-toggle',
+  slider: 'ui-slider-drag',
+  scroll: 'ui-scroll-tick',
+  'menu-open': 'ui-menu-open',
+  'settings-saved': 'ui-settings-saved',
+  'tab-switch': 'ui-tab-switch',
+  pause: 'ui-pause',
+  resume: 'ui-resume',
+  release: 'block-release',
+  invalid: 'block-blocked',
+  rotate: 'cube-rotate',
+  unlock: 'cube-unlock',
+  complete: 'core-exposed',
+  failed: 'level-fail',
+  countdown: 'countdown-tick',
+  'round-start': 'round-start',
+  'timer-warning': 'timer-warning',
+  'move-limit': 'move-limit-warning',
+  undo: 'undo-move',
+  hint: 'hint-highlight',
+  'star-1': 'star-rating-1',
+  'star-2': 'star-rating-2',
+  'star-3': 'star-rating-3',
+  'level-win': 'level-win',
+  'chapter-complete': 'chapter-complete',
+  'new-record': 'new-record',
+  'tutorial-done': 'tutorial-step-done',
+};
+
 class AudioEngine {
   constructor() {
     this.ctx = null;
@@ -15,6 +59,7 @@ class AudioEngine {
     this.ambienceNodes = null;
     this.onCaption = null; // (text) => void, set by UI when captions enabled
     this._lastCaption = new Map();
+    this.sampleCache = new Map(); // file -> { buffer, failed, promise }
   }
 
   ensure() {
@@ -110,53 +155,134 @@ class AudioEngine {
     src.start(t);
   }
 
+  // ---------- recorded samples (sfx/*.opus) ----------
+
+  // Lazy loader: once the gesture-unlocked AudioContext exists, each sample
+  // is fetched, decoded, and cached on first use. The pending entry is shared
+  // so repeated events never trigger duplicate fetches.
+  loadSample(file) {
+    if (!this.ctx) return null;
+    let entry = this.sampleCache.get(file);
+    if (!entry) {
+      entry = { buffer: null, failed: false, promise: null };
+      entry.promise = fetch('sfx/' + file + '.opus')
+        .then((res) => {
+          if (!res.ok) throw new Error('http ' + res.status);
+          return res.arrayBuffer();
+        })
+        .then((data) => this.ctx.decodeAudioData(data))
+        .then((buffer) => { entry.buffer = buffer; })
+        .catch(() => { entry.failed = true; });
+      this.sampleCache.set(file, entry);
+    }
+    return entry;
+  }
+
+  // One-shot sample playback through the effects bus, so current volume/mute
+  // settings apply. Returns true only when the sample actually starts; callers
+  // run the procedural fallback while the sample is loading or after failure.
+  sfx(file) {
+    if (!this.settings || this.settings.audio.muted) return false;
+    if (!this.ctx || this.ctx.state !== 'running') return false;
+    const entry = this.loadSample(file);
+    if (!entry || !entry.buffer) return false;
+    try {
+      const src = this.ctx.createBufferSource();
+      src.buffer = entry.buffer;
+      src.connect(this.buses.effects);
+      src.start();
+      return true;
+    } catch { /* context torn down */ }
+    return false;
+  }
+
   // ---------- logical event sounds ----------
 
   play(name) {
     if (!this.settings || this.settings.audio.muted) return;
+    const file = SFX_FILES[name] || null;
+    // Prefer the mapped sample; synth runs only while it loads or on failure.
+    const sampled = file ? this.sfx(file) : false;
     const v = 1 + (this.avRng.next() - 0.5) * 0.12; // seeded pitch variant
     switch (name) {
       case 'ui':
-        this.blip({ freq: 620 * v, dur: 0.05, type: 'triangle', gain: 0.18 });
+        if (!sampled) this.blip({ freq: 620 * v, dur: 0.05, type: 'triangle', gain: 0.18 });
         break;
       case 'tap':
-        this.blip({ freq: 340 * v, dur: 0.06, type: 'triangle', gain: 0.25 });
+        if (!sampled) this.blip({ freq: 340 * v, dur: 0.06, type: 'triangle', gain: 0.25 });
         this.caption('tap', 'tap');
         break;
       case 'release':
-        this.noiseBurst({ dur: 0.28, gain: 0.22, freq: 900 * v, sweepTo: 2400 * v, q: 2 });
-        this.blip({ freq: 520 * v, freqEnd: 780 * v, dur: 0.16, type: 'sine', gain: 0.22 });
+        if (!sampled) {
+          this.noiseBurst({ dur: 0.28, gain: 0.22, freq: 900 * v, sweepTo: 2400 * v, q: 2 });
+          this.blip({ freq: 520 * v, freqEnd: 780 * v, dur: 0.16, type: 'sine', gain: 0.22 });
+        }
         this.caption('release', 'cube released');
         break;
       case 'invalid':
-        this.blip({ freq: 140, freqEnd: 90, dur: 0.14, type: 'square', gain: 0.16 });
+        if (!sampled) this.blip({ freq: 140, freqEnd: 90, dur: 0.14, type: 'square', gain: 0.16 });
         this.caption('invalid', 'not allowed');
         break;
       case 'rotate':
-        this.noiseBurst({ dur: 0.12, gain: 0.1, freq: 500 * v, q: 3 });
+        if (!sampled) this.noiseBurst({ dur: 0.12, gain: 0.1, freq: 500 * v, q: 3 });
+        break;
+      case 'tab-switch':
+        if (!sampled) this.blip({ freq: 700 * v, dur: 0.04, type: 'triangle', gain: 0.15 });
         break;
       case 'unlock':
-        this.blip({ freq: 660, dur: 0.07, type: 'triangle', gain: 0.2 });
-        setTimeout(() => this.blip({ freq: 990, dur: 0.1, type: 'triangle', gain: 0.2 }), 70);
+        if (!sampled) {
+          this.blip({ freq: 660, dur: 0.07, type: 'triangle', gain: 0.2 });
+          setTimeout(() => this.blip({ freq: 990, dur: 0.1, type: 'triangle', gain: 0.2 }), 70);
+        }
         this.caption('unlock', 'lock opened');
         break;
       case 'complete':
-        [523, 659, 784, 1047].forEach((f, i) =>
-          setTimeout(() => this.blip({ freq: f, dur: 0.35, type: 'sine', gain: 0.22 }), i * 90));
+        if (!sampled) {
+          [523, 659, 784, 1047].forEach((f, i) =>
+            setTimeout(() => this.blip({ freq: f, dur: 0.35, type: 'sine', gain: 0.22 }), i * 90));
+        }
         this.caption('complete', 'board cleared');
         break;
       case 'failed':
-        [392, 330, 262].forEach((f, i) =>
-          setTimeout(() => this.blip({ freq: f, dur: 0.3, type: 'sine', gain: 0.18 }), i * 120));
+        if (!sampled) {
+          [392, 330, 262].forEach((f, i) =>
+            setTimeout(() => this.blip({ freq: f, dur: 0.3, type: 'sine', gain: 0.18 }), i * 120));
+        }
         this.caption('failed', 'round over');
         break;
       case 'achievement':
-        this.blip({ freq: 880, dur: 0.12, type: 'triangle', gain: 0.2 });
-        setTimeout(() => this.blip({ freq: 1175, dur: 0.18, type: 'triangle', gain: 0.2 }), 110);
+        if (!sampled) {
+          this.blip({ freq: 880, dur: 0.12, type: 'triangle', gain: 0.2 });
+          setTimeout(() => this.blip({ freq: 1175, dur: 0.18, type: 'triangle', gain: 0.2 }), 110);
+        }
         this.caption('achievement', 'achievement unlocked');
         break;
       case 'countdown':
-        this.blip({ freq: 440 * v, dur: 0.08, type: 'triangle', gain: 0.2 });
+        if (!sampled) this.blip({ freq: 440 * v, dur: 0.08, type: 'triangle', gain: 0.2 });
+        break;
+      case 'round-start':
+        this.caption('round-start', 'round started');
+        break;
+      case 'undo':
+        this.caption('undo', 'move undone');
+        break;
+      case 'hint':
+        this.caption('hint', 'hint shown');
+        break;
+      case 'timer-warning':
+        this.caption('timer-warning', 'time nearly up');
+        break;
+      case 'move-limit':
+        this.caption('move-limit', 'few moves left');
+        break;
+      case 'level-win':
+        this.caption('level-win', 'level completed');
+        break;
+      case 'chapter-complete':
+        this.caption('chapter-complete', 'chapter cleared');
+        break;
+      case 'new-record':
+        this.caption('new-record', 'new personal best');
         break;
     }
   }

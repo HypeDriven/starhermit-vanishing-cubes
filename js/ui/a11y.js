@@ -4,6 +4,7 @@
 // objects), and CVD-safe palette adjustment of theme colors.
 
 import { DIR_NAMES } from '../rules/engine.js';
+import { audio } from '../audio/audio.js';
 
 const liveEl = () => document.getElementById('sr-live');
 const assertiveEl = () => document.getElementById('sr-assertive');
@@ -19,6 +20,8 @@ export function announce(message, assertive = false) {
 }
 
 export function toast(message, { assertive = false, ms = 2600 } = {}) {
+  // Caption echoes ('♪ …') stay silent — they already represent a sound.
+  if (!String(message).startsWith('♪')) audio.play('toast');
   const region = document.getElementById('toast-region');
   if (region) {
     const div = document.createElement('div');
@@ -66,6 +69,7 @@ export function paletteAdjust(theme, palette) {
 const modalStack = [];
 
 export function openModal(el) {
+  audio.play('modal-open');
   const previouslyFocused = document.activeElement;
   modalStack.push({ el, previouslyFocused });
   el.hidden = false;
@@ -78,6 +82,7 @@ export function openModal(el) {
 }
 
 export function closeModal(el) {
+  audio.play('panel-close');
   const index = modalStack.findIndex((m) => m.el === el);
   if (index === -1) {
     el.hidden = true;
