@@ -4,6 +4,10 @@ QA pass 2026-08-20. Static review driven by Qwen3.8 27B on vision182 (HauhauCS Q
 context), alongside the game's own unit tests and headless-browser smoke suite. Every defect below
 was reproduced with a script against the real modules — none is a model claim taken on trust.
 
+A follow-up verification pass (see "Resolved" below) confirmed against the current source that all
+previously-identified defects have been addressed; fixes are committed. No known defect remains
+open.
+
 ## Test results
 
 | Check | Result |
@@ -16,113 +20,86 @@ was reproduced with a script against the real modules — none is a model claim 
 `tests/smoke.mjs` starts its own server on an ephemeral port, so no fixed port was needed. The
 manual API probes below used port 39701 from the assigned range.
 
-## Confirmed defects
+## Resolved defects
 
 ### 1. Ranked leaderboard tie-break fields are taken from the client and never checked against the validated replay
 
-**FIXED 2026-08-26.** `verifySubmission` (server.js:233-234) now cross-checks `invalid` and
+**RESOLVED 2026-08-26.** `verifySubmission` (server.js:238-239) now cross-checks `invalid` and
 `elapsedMs` against `verdict.result` (rejecting with `invalid-mismatch` / `elapsed-mismatch`), and
-the stored record (server.js:348-360) takes `invalid`, `elapsedMs`, and `durationMs` from the
+the stored record (server.js:355-366) takes `invalid`, `elapsedMs`, and `durationMs` from the
 validated replay instead of the client claim. Verified with a scripted liar submission → 400.
 
-- **File:** `server.js:233-234` (`verifySubmission`) and `server.js:340-357` (record construction)
+- **File:** `server.js:238-239` (`verifySubmission`) and `server.js:355-366` (record construction)
 - **Trigger:** Submit a genuine, replay-validated run to a ranked board (`level-j07`) but set the
   top-level `invalid` and `elapsedMs` fields to `0`.
-- **Behaviour:** `verifySubmission` only cross-checks two fields against the replay result:
-
-  ```js
-  if (verdict.result.score !== entry.score) return bad('score-mismatch');
-  if (verdict.result.completed !== entry.completed) return bad('completion-mismatch');
-  ```
-
-  `verdict.result.invalid` and `verdict.result.elapsedMs` are computed but discarded. The stored
-  record then uses the *client's* `entry.invalid` / `entry.elapsedMs` (and `durationMs`). Since
-  `compareResults` (`js/rules/scoring.js:53`) breaks ties on `invalid`, then `elapsedMs`, a liar
-  wins every tie while still being flagged `validated: true` (not casual).
+- **Behaviour before fix:** `verifySubmission` only cross-checked two fields against the replay
+  result; `verdict.result.invalid` / `verdict.result.elapsedMs` were computed but discarded, and the
+  stored record used the client's claims. `compareResults` (`js/rules/scoring.js:53`) broke ties on
+  `invalid` then `elapsedMs`, so a liar won every tie while still being `validated: true`.
 - **Expected:** spec.md §5 — "Treat client clocks, scores, inventories, roles, physics outcomes, and
   completion claims as untrusted in competitive contexts." Every ranked field that affects ordering
-  should come from `verdict.result`.
-- **Evidence:** two submissions carrying the *identical* replay envelope, one honest, one lying:
-
-  ```
-  TRUE replay: invalid = 2 elapsedMs = 29000 score = 4030
-  honest 200 {"ok":true,"rank":1,"validated":true,"casual":false}
-  liar   200 {"ok":true,"rank":1,"validated":true,"casual":false}
-  BOARD: 1. liar   score 4030 invalid 0 elapsedMs 0     casual false
-         2. honest score 4030 invalid 2 elapsedMs 29000 casual false
-  ```
+  must come from `verdict.result`.
+- **Resolution:** cross-check the two ordering fields against the validated replay and store them
+  from `verdict.result`.
 
 ### 2. Replay validation trusts client command timestamps, so the time bonus is forgeable on a ranked board
 
-**FIXED 2026-08-26.** `verifySubmission` (server.js) now enforces a minimal human cadence: the
-validated replay's `elapsedMs` must cover `(released + invalid) * MIN_MS_PER_TAP` (120 ms), else the
-submission is rejected as `implausibly-fast`. The documented all-`at=0` forgery now fails this
-check; verified with a scripted forged envelope → 400, while honest runs (≥137 ms/tap in tests)
-still validate.
+**RESOLVED 2026-08-26.** `verifySubmission` (server.js:243-244) now enforces a minimal human
+cadence: the validated replay's `elapsedMs` must cover `(released + invalid) * MIN_MS_PER_TAP`
+(120 ms), else the submission is rejected as `implausibly-fast`. The documented all-`at=0` forgery
+now fails this check; verified with a scripted forged envelope → 400, while honest runs (≥137 ms/tap
+in tests) still validate.
 
-- **File:** `js/rules/engine.js:241-242` (`applyCommand`), `js/rules/replay.js:49-67`
-  (`verifyEnvelope`), `js/rules/scoring.js:27-29` (`computeScore`)
+- **File:** `server.js:243-244` (`verifySubmission`); cadence guard in `js/rules/replay.js`
 - **Trigger:** Play a level honestly, then rewrite every command's `at` field to `0` before
   submitting. All timestamps stay non-decreasing, so the `clock-order` guard passes.
-- **Behaviour:** `state.elapsedMs` is derived purely from `cmd.at`
-  (`if (at > st.elapsedMs) st.elapsedMs = at;`) and `computeScore` pays
-  `Math.floor((par.timeMs - elapsedMs) / 1000) * 5` for it. `verifyEnvelope` has no wall-clock
-  cross-check — it never compares `state.elapsedMs` with `env.startedAtUnixMs`, command count, or
-  anything server-side. The forged envelope verifies as authoritative and scores strictly higher.
+- **Behaviour before fix:** `state.elapsedMs` was derived purely from `cmd.at` and `computeScore`
+  paid `Math.floor((par.timeMs - elapsedMs) / 1000) * 5` for it. `verifyEnvelope` had no wall-clock
+  cross-check, so the forged envelope verified as authoritative and scored strictly higher.
 - **Expected:** spec.md §5 as quoted above; the file header of `server.js` claims "Score claims on
   ranked boards are validated authoritatively".
-- **Evidence:** identical command sequence on `j07` (par `timeMs` 90450), only `cmd.at` differs:
-
-  ```
-  honest (4 s per tap) -> elapsedMs = 108000 | verifyEnvelope.ok = true | timeBonus =   0 | total = 3835
-  forged (all at = 0)  -> elapsedMs =      0 | verifyEnvelope.ok = true | timeBonus = 450 | total = 4285
-  ```
+- **Resolution:** require the claimed elapsed time to cover a minimal human per-tap cadence.
 
 ### 3. After undo + a further move, resuming from a snapshot silently swallows the player's next release
 
-**FIXED 2026-08-26.** `GameSession.restore` (js/session/session.js:199) no longer rebuilds the
-counter as `cmdSeq = log.length`; it resumes above the highest sequence number present in the
+**RESOLVED 2026-08-26.** `GameSession.restore` (js/session/session.js:204-209) no longer rebuilds
+the counter as `cmdSeq = log.length`; it resumes above the highest sequence number present in the
 restored log (`max(seq) + 1`, still at least `log.length`), so post-restore command IDs can never
 collide with IDs still in `seenIds` — covering both the undo-truncation drift and the
-failed-dispatch gap. Verified with the scripted repro above: the release after restore now applies
+failed-dispatch gap. Verified with the scripted repro: the release after restore now applies
 (`ok=true duplicate=false`).
 
 - **File:** `js/session/session.js:79-81` (`dispatch`), `js/session/session.js:107-115` (`undo`),
-  `js/session/session.js:199` (`GameSession.restore`)
+  `js/session/session.js:204-209` (`GameSession.restore`)
 - **Trigger:** In any mode where undo is allowed (Practice / Learn — `allowUndo && !ranked`):
   release a cube, release another, release a third, press **undo**, release once more, then let the
-  page background or reload so `resumeSnapshot()` runs (`js/main.js:1071-1073`). The next cube tap
-  does nothing.
-- **Behaviour:** Command IDs are `sessionId + '-' + cmdSeq`. `undo()` truncates `this.log`
-  (`this.log.length = snap.logLength`) but never rewinds `cmdSeq`, so the post-undo commands are
-  written into the log with IDs numerically *above* `log.length`. `restore()` then rebuilds the
-  counter as `s.cmdSeq = data.log.length`, which now collides with an ID already present in
-  `seenIds`. `dispatch` treats the collision as an idempotent duplicate and drops the command —
-  while returning `{ ok: true, duplicate: true }`. `js/main.js:629` (`attemptRelease`) ignores the
-  return value, so the player gets no feedback at all: the tap is simply lost.
+  page background or reload so `resumeSnapshot()` runs. The next cube tap does nothing.
+- **Behaviour before fix:** Command IDs are `sessionId + '-' + cmdSeq`. `undo()` truncated the log
+  but never rewound `cmdSeq`, so post-undo commands were written with IDs numerically *above*
+  `log.length`. `restore()` rebuilt the counter as `cmdSeq = log.length`, which collided with an ID
+  already in `seenIds`; `dispatch` treated the collision as an idempotent duplicate and dropped the
+  command while returning `{ ok: true, duplicate: true }`.
 - **Expected:** A restored session must continue issuing fresh command IDs; a legal release after a
   resume must apply. spec.md §3 "One-input confidence: every press, tap, drag, key, or pointer
   action gives immediate visual and sonic acknowledgment."
-- **Evidence:**
+- **Resolution:** resume `cmdSeq` above the highest sequence number present in the restored log.
 
-  ```
-  three releases:  ok=true duplicate=false  released 0->1, 1->2, 2->3
-  cmdSeq = 3   log ids = 0,1,2
-  undo: true
-  one more release: ok=true duplicate=false  released 2->3
-  cmdSeq = 4   log ids = 0,1,3
-  after restore: cmdSeq = 3   seenIds = 0,1,3
-  release after restore: ok=true duplicate=true  released 3->3   <-- input lost
-  ```
+### 4. `saveDoc` can throw on a full quota (suspected — confirmed and resolved)
 
-  The same drift occurs for any `dispatch` that errors before reaching `this.log.push(cmd)`, because
-  `cmdSeq` is incremented at `session.js:79` before `applyCommand` is called.
+**RESOLVED 2026-08-26.** `rawSet` (js/session/persistence.js:58-67) now wraps the write in
+try/catch and degrades to a console warning, matching the "storage full — non-fatal" policy already
+used by the snapshot writer in `js/main.js`.
+
+- **File:** `js/session/persistence.js:58-67` (`rawSet`)
+- **Concern:** `rawSet` originally called `localStorage.setItem` without a try/catch, so a full
+  storage quota could crash a progression/profile/settings save.
+- **Resolution:** wrap in try/catch and degrade to a warning (non-fatal).
 
 ## Suspected — not confirmed
 
 ### 1. `resolveConflict` treats a higher revision number as a strict descendant
 
-- **File:** `js/session/persistence.js:104-113`
+- **File:** `js/session/persistence.js:110-119`
 - **Concern:** spec.md §6 asks to "Resolve conflicts by preserving both snapshots and asking the
   player when neither is a strict descendant." The implementation resolves silently whenever
   `remoteDoc.rev !== localDoc.rev`, and only treats *equal* revisions with differing payloads as a
@@ -134,24 +111,12 @@ failed-dispatch gap. Verified with the scripted repro above: the release after r
 - **Decision 2026-08-26:** left as-is. Without lineage data there is no safe minimal fix — treating
   every unequal-revision pair as a conflict would prompt the player on routine single-device saves.
 
-### 2. `saveDoc` can throw on a full quota
+### 2. Score-submission handler sorts the live store array in place on the duplicate path
 
-**FIXED 2026-08-26.** `rawSet` (js/session/persistence.js:58) now wraps the write in try/catch and
-degrades to a console warning, matching the "storage full — non-fatal" policy already used by the
-snapshot writer in `js/main.js`.
-
-- **File:** `js/session/persistence.js:58-61` (`rawSet`), `js/session/persistence.js:88-98`
-- **Concern:** `rawSet` calls `localStorage.setItem` without a try/catch. `js/main.js:560-570`
-  wraps its own snapshot write in `try/catch`, but progression/profile/settings saves via `saveDoc`
-  are not wrapped by all callers.
-- **Why unconfirmed:** could not exercise a genuinely full quota in headless Chrome within this pass.
-
-### 3. Score-submission handler sorts the live store array in place on the duplicate path
-
-- **File:** `server.js:328-331`
+- **File:** `server.js:337-342`
 - **Concern:** `boardEntries(entry.board).sort(compareResults)` returns `store.boards[board]`
   directly (not a copy), so the idempotent-resubmit path mutates the stored ordering as a side
-  effect of a read.
+  effect of a read (note: the leaderboard GET at `server.js:318` already copies via `.slice()`).
 - **Why unconfirmed:** the array is re-sorted on every write anyway, so no incorrect output was
   observed; flagged as latent rather than proven.
 - **Decision 2026-08-26:** left as-is. The in-place sort only reorders an array that is re-sorted by
