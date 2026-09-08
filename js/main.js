@@ -366,8 +366,13 @@ function onSessionEvents(events, state) {
     }
     checkTutorialEvent(ev, state);
   }
-  refreshHUD();
-  refreshBoardMirror();
+  // Pure clock ticks change no board state — rebuilding the accessible board
+  // mirror 4×/s would detach its buttons under the player's pointer/focus.
+  const clockOnly = events.every((ev) => ev.type === 'clock');
+  if (!clockOnly) {
+    refreshHUD();
+    refreshBoardMirror();
+  }
   persistSnapshot();
   if (state.status !== 'active' && !app.finishing) {
     app.finishing = true;
@@ -1117,9 +1122,25 @@ function wireButtons() {
   $('btn-journey').addEventListener('click', () => openSetup('journey'));
   $('btn-scores').addEventListener('click', () => openScores());
   $('btn-modes').addEventListener('click', openModeSelect);
-  $('btn-help').addEventListener('click', openHelp);
-  $('btn-settings').addEventListener('click', openSettings);
-  $('btn-profile').addEventListener('click', openProfile);
+  $('btn-help').addEventListener('click', () => {
+    // Help is a full screen: pause first so a timed clock cannot run while
+    // the board is hidden, then drop the pause modal so help is visible.
+    if (app.state === 'active') {
+      pauseGame('overlay');
+      closeModal($('modal-pause'));
+    }
+    openHelp();
+  });
+  $('btn-settings').addEventListener('click', () => {
+    // Settings/profile are modals: pausing first leaves the pause dialog
+    // underneath, so closing them lands back on Resume.
+    if (app.state === 'active') pauseGame('overlay');
+    openSettings();
+  });
+  $('btn-profile').addEventListener('click', () => {
+    if (app.state === 'active') pauseGame('overlay');
+    openProfile();
+  });
 
   document.querySelectorAll('[data-nav]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1228,6 +1249,7 @@ function resumeSnapshot(snapJson) {
     app.session = session;
     app.session.onEvents(onSessionEvents);
     app.finishing = false;
+    app.warnedTime = false;
     app.selectedCubeId = null;
     app.hoveredCubeId = null;
     const theme = currentTheme();
@@ -1246,6 +1268,10 @@ function resumeSnapshot(snapJson) {
       app.scene.start();
     }
     toast('Round resumed from your last safe snapshot.');
+    platform.activityStart(data.params.mode); // keep activity start/end paired
+    // A previous round's interval may still be live (e.g. title was reached
+    // via Help while paused) — never run two clock drivers for one session.
+    if (app.clockTimer) clearInterval(app.clockTimer);
     app.clockTimer = setInterval(() => {
       if (app.state !== 'active') return;
       app.session.tickClock();

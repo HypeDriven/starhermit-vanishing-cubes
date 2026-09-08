@@ -34,7 +34,7 @@ import { LEVEL_DEFS, dailyDef } from './js/content/levels.js';
 import { CHALLENGES, challengeLimits } from './js/content/challenges.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(ROOT, 'data');
+const DATA_DIR = process.env.VANISHING_CUBES_DATA_DIR || path.join(ROOT, 'data');
 const PORT = Number(process.env.PORT || 8080);
 const BUILD = '1.0.0';
 const CONTENT_VERSION = 1;

@@ -24,7 +24,7 @@ import { LESSONS } from '../js/content/tutorials.js';
 import { CHALLENGES, challengeLimits } from '../js/content/challenges.js';
 import { THEMES, themeById, unlockedThemes } from '../js/content/themes.js';
 import { ACHIEVEMENTS, evaluateAchievements } from '../js/content/achievements.js';
-import { startServer } from '../server.js';
+import { startServer } from './test-server.mjs';
 
 // ---------- tiny framework ----------
 

@@ -70,6 +70,7 @@ const tmpPos = new THREE.Vector3();
 const tmpQuat = new THREE.Quaternion();
 const tmpScale = new THREE.Vector3();
 const tmpColor = new THREE.Color();
+const tmpFlash = new THREE.Color();
 const tmpDir = new THREE.Vector3();
 const tmpOffset = new THREE.Vector3();
 
@@ -353,8 +354,10 @@ export class CubeViews {
       const flash = this.flashes.get(id);
       let color = this._colorFor(rec);
       if (flash) {
+        // _colorFor returns the shared tmpColor; lerp from a separate temp
+        // so the flash tint is not clobbered before the blend.
         const k = 1 - flash.t / flash.dur;
-        color = tmpColor.set(0x7dffb0).lerp(this._colorFor(rec), 1 - k);
+        color = tmpFlash.set(0x7dffb0).lerp(color, 1 - k);
       }
       this.arrowMesh.setColorAt(rec.slot, color);
     }

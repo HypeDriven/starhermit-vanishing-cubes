@@ -136,6 +136,11 @@ export const platform = {
     }
     const boards = this._localBoards();
     const list = boards.entries[entry.board] || (boards.entries[entry.board] = []);
+    // Idempotent resubmission, matching the hosted API: one entry per session.
+    const dup = list.findIndex((e) => e.sessionId === entry.sessionId);
+    if (dup !== -1) {
+      return { ok: true, rank: dup + 1, validated: false, casual: true, duplicate: true };
+    }
     list.push({ ...entry, replay: undefined, validated: false, casual: true, at: Date.now() });
     list.sort((a, b) => b.score - a.score || a.invalid - b.invalid || a.elapsedMs - b.elapsedMs);
     boards.entries[entry.board] = list.slice(0, 100);

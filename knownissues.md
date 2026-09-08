@@ -1,8 +1,59 @@
 # Known Issues — Vanishing Cubes
 
-QA pass 2026-08-20. Static review driven by Qwen3.8 27B on vision182 (HauhauCS Q2_K_P, 8192-token
-context), alongside the game's own unit tests and headless-browser smoke suite. Every defect below
-was reproduced with a script against the real modules — none is a model claim taken on trust.
+QA pass 2026-09-08 (follow-up). Reviewed the full client/server source again; four new defects
+were reproduced and fixed (below), plus the missing root LICENSE.md was added. All checks green:
+`npm test` 76/0, `npm run smoke` 40/0, and a targeted headless-Chrome pass over the new
+pause/overlay behaviour (12/0).
+
+### 5. Opening Settings/Profile/Help during an active round did not pause it
+
+**RESOLVED 2026-09-08.** The topbar buttons (visible during play) opened overlays while the round
+stayed `active`: timed challenge clocks kept running behind the modal/screen, and keyboard input
+kept releasing cubes while the board was hidden. `js/main.js` (`wireButtons`) now pauses the round
+first — Settings/Profile open over the pause dialog (closing them lands back on Resume); Help
+pauses and drops the pause modal so the screen is readable.
+
+### 6. Accessible board mirror rebuilt on every clock tick in timed modes
+
+**RESOLVED 2026-09-08.** `tickClock()` dispatches a `clock` command every 250 ms when a time limit
+exists, and `onSessionEvents` rebuilt the entire board-list DOM for it — buttons detached under the
+player's pointer/focus 4×/s, making the mirror nearly unusable in timed challenges (confirmed by a
+Playwright click that could never land). `onSessionEvents` now skips the HUD/mirror rebuild for
+clock-only event batches.
+
+### 7. Resuming a snapshot could double-drive the clock and skipped activity start
+
+**RESOLVED 2026-09-08.** `resumeSnapshot` (js/main.js) started a new clock interval without
+clearing a possible leftover one (reachable via active → Help → title → Resume), and never called
+`platform.activityStart`, leaving the `activityEnd` at round finish unpaired so resumed rounds
+counted no playtime. It now clears any existing interval, resets the time-warning latch, and starts
+the activity.
+
+### 8. Unlock flash tint never rendered (shared temp color clobbered mid-lerp)
+
+**RESOLVED 2026-09-08.** `CubeViews._refreshColors` (js/render/cubeviews.js) computed
+`tmpColor.set(0x7dffb0).lerp(this._colorFor(rec), …)` — but `_colorFor` mutates and returns that
+same `tmpColor`, so the lerp collapsed to a no-op and the green unlock flash was never visible. The
+flash now blends from a dedicated temp color.
+
+### 9. Local (offline) leaderboard accepted duplicate submissions per session
+
+**RESOLVED 2026-09-08.** The hosted API rejects resubmissions idempotently by `sessionId`; the
+local fallback in `js/platform/platform.js` appended blindly, so a retry after an offline submit
+produced duplicate rows. It now returns the existing entry's rank with `duplicate: true`.
+
+### 10. LICENSE.md missing from the repository root
+
+**RESOLVED 2026-09-08.** Root instructions require the PolyForm Noncommercial 1.0.0 text at
+`LICENSE.md`; added verbatim from https://polyformproject.org/licenses/noncommercial/1.0.0.
+
+## Open items (not defects in this distribution)
+
+- **Localization:** root agents docs call for text localization with nine locales
+  (en-US/en-GB/es-419/es-ES/de-DE/fr-FR/fr-CA/pt-BR/it-IT). All UI text is currently hardcoded
+  English; adding a full i18n layer is feature work beyond a review pass and is intentionally
+  left for a dedicated change.
+
 
 A follow-up verification pass (see "Resolved" below) confirmed against the current source that all
 previously-identified defects have been addressed; fixes are committed. No known defect remains

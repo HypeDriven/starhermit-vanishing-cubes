@@ -1,7 +1,7 @@
 {
   "name": "vanishing-cubes",
   "version": "1.0.0",
-  "description": "Vanishing Cubes — a 3D direction puzzle. Rotate a floating cube assembly and release blocks whose arrow path is clear.",
+  "description": "Vanishing Cubes \u2014 a 3D direction puzzle. Rotate a floating cube assembly and release blocks whose arrow path is clear.",
   "type": "module",
   "private": true,
   "scripts": {
@@ -15,5 +15,6 @@
   },
   "devDependencies": {
     "playwright-core": "^1.62.1"
-  }
+  },
+  "license": "PolyForm-Noncommercial-1.0.0"
 }

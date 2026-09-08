@@ -5,7 +5,7 @@
 // Run: npm run smoke
 
 import { setTimeout as delay } from 'node:timers/promises';
-import { startServer } from '../server.js';
+import { startServer } from './test-server.mjs';
 
 const CHROME = process.env.CHROME_PATH || '/usr/bin/google-chrome';
 
