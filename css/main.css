@@ -577,17 +577,27 @@ button { font-family: inherit; }
 
 @media (max-height: 500px) and (orientation: landscape) {
   #topbar { min-height: 36px; padding-top: 0.15rem; padding-bottom: 0.15rem; }
+  /* the quick-action tray is a distinct right-hand column below the top HUD;
+     the HUD keeps clear of it and its own pause is redundant with the tray's */
   #tray-bottom {
     position: absolute;
     right: calc(0.25rem + var(--sar));
-    top: 50%;
-    transform: translateY(-50%);
+    top: 3.1rem;
+    bottom: 0.25rem;
+    transform: none;
     flex-direction: column;
+    justify-content: flex-start;
     background: transparent;
     border: none;
     width: auto;
+    overflow-y: auto;
   }
-  #tray-bottom .btn { min-width: 52px; min-height: 52px; flex: none; }
+  #tray-bottom .btn { min-width: 48px; min-height: 44px; flex: none; padding: 0.3rem 0.5rem; }
+  #hud-top { padding-right: calc(0.5rem + var(--sar)); }
+  #hud-top #btn-pause { display: none; }
+  /* the tray never sits over an open drawer */
+  body:has(.rail.open) #tray-bottom { display: none; }
+  .rail { z-index: 7; }
 }
 
 /* left-handed controls: mirror the tray and rails */
