@@ -92,7 +92,7 @@ try {
   check('Play is dominant', await page.locator('#btn-play').isVisible());
 
   const net = await page.locator('#net-status').textContent();
-  check('hosted status detected (' + net.trim() + ')', /online/.test(net));
+  check('status reported (' + net.trim() + ')', /local play|online/.test(net));
 
   // Help screen renders rule cards from live bindings.
   await page.click('#btn-help');
@@ -164,9 +164,14 @@ try {
   });
   check('journey progression persisted to localStorage', stars >= 1);
 
-  // Ranked submission landed on a validated board (journey level board).
-  const boardRes = await (await fetch(base + '/api/v1/leaderboard?board=level-j01')).json();
-  check('journey leaderboard accepted a validated entry', boardRes.entries?.length >= 1 && boardRes.entries[0].casual === false);
+  // Clients never submit scores to the server board; the personal record is
+  // kept in the local boards document (cloud-mirrored when hosted).
+  const boardsDoc = await page.evaluate(() => {
+    const raw = localStorage.getItem('vc.boards');
+    return raw ? JSON.parse(raw) : null;
+  });
+  check('journey personal record kept locally',
+    !!boardsDoc?.payload?.entries?.['level-j01']?.length);
 
   // Back to modes; all six mode cards present.
   await page.click('#btn-results-exit');

@@ -209,7 +209,7 @@ export function buildSetup(container, mode, ctx, onStart) {
       ['Expected', formatMs(dailyMeta.par.timeMs)],
       ['Players', '1'],
       ['Assists', 'hints only — no undo'],
-      ['Ranked', platformInfo.hosted ? 'yes — validated board' : 'casual (offline)'],
+      ['Ranked', platformInfo.hosted ? 'global board read-only' : 'casual (offline)'],
     ]);
     if (dailyMeta.doneToday) {
       const p = document.createElement('p');
@@ -262,7 +262,7 @@ export function buildSetup(container, mode, ctx, onStart) {
     setupFacts(panel, [
       ['Undo', 'disabled'],
       ['Hints', 'disabled'],
-      ['Ranked', platformInfo.hosted ? 'yes' : 'casual (offline)'],
+      ['Ranked', platformInfo.hosted ? 'global board read-only' : 'casual (offline)'],
     ]);
     const grid = document.createElement('div');
     grid.className = 'level-grid';
@@ -363,14 +363,51 @@ export function renderResults(target, data) {
 
 // ---------- scores ----------
 
+function boardPanel(title, res, progression) {
+  const panel = document.createElement('div');
+  panel.className = 'setup-panel';
+  const h = document.createElement('h3');
+  h.textContent = title;
+  panel.appendChild(h);
+  const table = document.createElement('table');
+  table.className = 'board-table';
+  table.innerHTML =
+    '<thead><tr><th>#</th><th>Player</th><th class="num">Score</th><th class="num">Invalid</th><th class="num">Time</th></tr></thead>';
+  const tbody = document.createElement('tbody');
+  table.appendChild(tbody);
+  panel.appendChild(table);
+  if (!res.ok) {
+    tbody.innerHTML = '<tr><td colspan="5">Board unavailable (' + res.error + '). Try again later.</td></tr>';
+    return panel;
+  }
+  if (res.casual) {
+    const p = document.createElement('p');
+    p.className = 'board-note';
+    p.textContent = 'Casual board — replay validation unavailable.';
+    panel.appendChild(p);
+  }
+  if (!res.entries.length) {
+    tbody.innerHTML = '<tr><td colspan="5">No entries yet. Be the first.</td></tr>';
+    return panel;
+  }
+  res.entries.slice(0, 10).forEach((entry, i) => {
+    const tr = document.createElement('tr');
+    const name = entry.name || 'Guest';
+    tr.innerHTML = `<td>${i + 1}</td><td></td><td class="num">${entry.score}</td><td class="num">${entry.invalid ?? 0}</td><td class="num">${formatMs(entry.elapsedMs || 0)}</td>`;
+    tr.children[1].textContent = name + (entry.sessionId && entry.sessionId === progression.lastSessionId ? ' (you)' : '');
+    tbody.appendChild(tr);
+  });
+  return panel;
+}
+
 export async function renderScores(container, ctx, friendNames = []) {
   const { platform, boards, progression } = ctx;
   container.textContent = '';
   const note = document.createElement('p');
   note.className = 'board-note';
   note.textContent = platform.hosted
-    ? 'Scores submitted with ruleset, content version, seed, assists and duration; ranked boards validate replays server-side.'
-    : 'Offline: boards are local and labeled casual. Connect through the host for validated global boards.';
+    ? 'The global board is platform-owned and read-only. Records below are your personal bests on this device, synced to your account.'
+    : 'Offline: boards are local and labeled casual. Connect through the host for the global board.';
   container.appendChild(note);
 
   // Compact friends filter: compare against known display names. No social
@@ -404,45 +441,23 @@ export async function renderScores(container, ctx, friendNames = []) {
   container.appendChild(frForm);
 
   const scope = friendNames.length ? 'friends' : 'global';
-  for (const board of boards) {
-    const panel = document.createElement('div');
-    panel.className = 'setup-panel';
-    const h = document.createElement('h3');
-    h.textContent = board.name;
-    panel.appendChild(h);
-    const table = document.createElement('table');
-    table.className = 'board-table';
-    table.innerHTML =
-      '<thead><tr><th>#</th><th>Player</th><th class="num">Score</th><th class="num">Invalid</th><th class="num">Time</th></tr></thead>';
-    const tbody = document.createElement('tbody');
-    tbody.innerHTML = '<tr><td colspan="5">Loading…</td></tr>';
-    table.appendChild(tbody);
-    panel.appendChild(table);
-    container.appendChild(panel);
 
-    const res = await platform.leaderboard(board.id, scope, friendNames);
-    tbody.textContent = '';
-    if (!res.ok) {
-      tbody.innerHTML = '<tr><td colspan="5">Board unavailable (' + res.error + '). Try again later.</td></tr>';
-      continue;
-    }
-    if (res.casual) {
+  // Hosted: the platform's single read-only leaderboard for this game.
+  if (platform.hosted) {
+    const g = await platform.globalBoard(scope);
+    if (g === null) {
       const p = document.createElement('p');
       p.className = 'board-note';
-      p.textContent = 'Casual board — replay validation unavailable.';
-      panel.appendChild(p);
+      p.textContent = 'No global board for this game yet — showing this device’s records.';
+      container.appendChild(p);
+    } else {
+      container.appendChild(boardPanel('Global — all players', g, progression));
     }
-    if (!res.entries.length) {
-      tbody.innerHTML = '<tr><td colspan="5">No entries yet. Be the first.</td></tr>';
-      continue;
-    }
-    res.entries.slice(0, 10).forEach((entry, i) => {
-      const tr = document.createElement('tr');
-      const name = entry.name || 'Guest';
-      tr.innerHTML = `<td>${i + 1}</td><td></td><td class="num">${entry.score}</td><td class="num">${entry.invalid ?? 0}</td><td class="num">${formatMs(entry.elapsedMs || 0)}</td>`;
-      tr.children[1].textContent = name + (entry.sessionId === progression.lastSessionId ? ' (you)' : '');
-      tbody.appendChild(tr);
-    });
+  }
+
+  for (const board of boards) {
+    const res = await platform.leaderboard(board.id, scope, friendNames);
+    container.appendChild(boardPanel(board.name, res, progression));
   }
 }
 
@@ -674,18 +689,19 @@ export function buildProfile(container, profile, progression, ctx, onSave) {
   const p = document.createElement('p');
   p.className = 'muted small';
   p.textContent = ctx.hosted
-    ? 'Signed in through the host shell.'
+    ? `Signed in as ${profile.name} — your account nickname (change it in your platform profile). Progress syncs to your account.`
     : 'Guest profile stored on this device. Sign-in becomes available when hosted.';
   container.appendChild(p);
 
   const nameRow = document.createElement('div');
   nameRow.className = 'setting-row';
   const label = document.createElement('label');
-  label.textContent = 'Display name';
+  label.textContent = ctx.hosted ? 'Account nickname' : 'Display name';
   const input = document.createElement('input');
   input.type = 'text';
   input.maxLength = 24;
   input.value = profile.name;
+  input.disabled = ctx.hosted;
   nameRow.append(label, input);
   container.appendChild(nameRow);
 
@@ -697,5 +713,9 @@ export function buildProfile(container, profile, progression, ctx, onSave) {
     `${progression.totals.released} cubes released · daily streak ${ctx.dailyStreak}`;
   container.appendChild(stats);
 
-  input.addEventListener('change', () => onSave(input.value.trim() || 'Guest'));
+  if (!ctx.hosted) {
+    input.addEventListener('change', () => onSave(input.value.trim() || 'Guest'));
+  } else {
+    input.addEventListener('change', () => { input.value = profile.name; });
+  }
 }

@@ -6,7 +6,6 @@
 
 import { legalActions, explainRelease, remainingArrows, DIR_NAMES } from './rules/engine.js';
 import { generateLevel } from './rules/generator.js';
-import { buildEnvelope } from './rules/replay.js';
 import { LEVEL_DEFS, PRACTICE_DEFS, dailyDef } from './content/levels.js';
 import { LESSONS, lessonById } from './content/tutorials.js';
 import { CHALLENGES, challengeLimits } from './content/challenges.js';
@@ -85,15 +84,54 @@ const achievementsUnlocked = docs.achievements.payload || {};
 
 function saveSettings() {
   docs.settings.rev = saveDoc('settings', settings, docs.settings.rev);
+  platform.scheduleCloudSave();
 }
 function saveProgression() {
   docs.progression.rev = saveDoc('progression', progression, docs.progression.rev);
+  platform.scheduleCloudSave();
 }
 function saveProfile() {
   docs.profile.rev = saveDoc('profile', profile, docs.profile.rev);
+  platform.scheduleCloudSave();
 }
 function saveAchievements() {
   docs.achievements.rev = saveDoc('achievements', achievementsUnlocked, docs.achievements.rev);
+  platform.scheduleCloudSave();
+}
+
+// Remote-preferred merge of a cloud snapshot. A remote doc with rev >= the
+// local one wins; localStorage remains the offline cache either way.
+const DOC_LIVE = {
+  settings: () => settings,
+  progression: () => progression,
+  profile: () => profile,
+  achievements: () => achievementsUnlocked,
+};
+const DOC_DEFAULTS = {
+  settings: DEFAULT_SETTINGS,
+  progression: DEFAULT_PROGRESSION,
+  profile: DEFAULT_PROFILE,
+  achievements: {},
+};
+
+function applyRemoteDocs(remote) {
+  let changed = false;
+  for (const [name, doc] of Object.entries(remote.docs || {})) {
+    if (name === 'boards') {
+      platform.applyRemoteBoards(doc);
+      continue;
+    }
+    const live = DOC_LIVE[name] ? DOC_LIVE[name]() : null;
+    if (!live || !doc || typeof doc !== 'object') continue;
+    if (doc.rev < docs[name].rev) continue;
+    if (doc.rev === docs[name].rev && JSON.stringify(doc.payload ?? null) === JSON.stringify(live)) continue;
+    const merged = deepMerge(structuredClone(DOC_DEFAULTS[name]), doc.payload || {});
+    for (const k of Object.keys(live)) delete live[k];
+    Object.assign(live, merged);
+    docs[name].rev = saveDoc(name, live, doc.rev);
+    changed = true;
+  }
+  return changed;
 }
 
 // ---------- app state machine ----------
@@ -504,11 +542,12 @@ async function finishRound() {
   }
   if (freshAchievements.length) saveAchievements();
 
-  // Ranked submission with replay envelope.
+  // Personal record. Clients never submit scores to a game leaderboard —
+  // platform scripts own ranked entries; this record stays on this device
+  // (and cloud-mirrors to the account when hosted).
   if (app.session.ranked || app.mode === 'journey') {
     const board = boardForCurrent();
     try {
-      const envelope = buildEnvelope({ build: BUILD, session: app.session });
       rankInfo = await platform.submitScore({
         board,
         name: profile.name,
@@ -517,15 +556,10 @@ async function finishRound() {
         invalid: result.stats.invalid,
         elapsedMs: result.elapsedMs,
         sessionId: app.session.sessionId,
-        ruleset: app.mode,
-        contentVersion: app.session.state.levelVersion,
-        seed: app.session.state.seed,
-        assists: { ...result.assists, timingAssist: !!settings.accessibility.timingAssist },
-        durationMs: result.elapsedMs,
-        replay: envelope,
+        mode: app.mode,
       });
     } catch (err) {
-      console.warn('score submission failed', err);
+      console.warn('personal record failed', err);
     }
   }
 
@@ -1357,7 +1391,19 @@ async function boot() {
   app.webgl = !!gl;
 
   await platform.init();
-  $('net-status').textContent = platform.hosted ? 'online' : 'local play';
+  if (platform.hosted) {
+    // Remote-preferred cloud load first, then bind the account nickname
+    // (GET /api/v1/users/{sub}/profile — never /api/v1/me).
+    const remote = await platform.loadCloudSave();
+    if (remote && applyRemoteDocs(remote)) applyA11yClasses(settings);
+    const nickname = await platform.loadProfile();
+    if (nickname) {
+      profile.name = nickname;
+      profile.guest = false;
+      saveProfile();
+    }
+  }
+  $('net-status').textContent = platform.statusText();
   platform.setTelemetryConsent(settings.telemetryConsent);
 
   // Audio unlocks on the first deliberate gesture.
@@ -1411,7 +1457,7 @@ async function boot() {
     }
   }, 50);
 
-  transition('profile-ready', 'profile loaded (guest)', 'boot');
+  transition('profile-ready', 'profile ready', 'boot');
   openTitle();
 }
 
