@@ -634,3 +634,61 @@ body.reduced-motion *, body.reduced-motion *::before, body.reduced-motion *::aft
 
 /* focus trap helper */
 .modal-open { overflow: hidden; }
+
+/* ---------- graphics ---------- */
+
+/* Title backdrop: the theme's pale sky with slow drifting cloud banks
+   (Surface detail: detailed; drift only with an animated background and
+   motion allowed). Text keeps its contrast: the sky stays pale. */
+body[data-gfx-detail="detailed"]:not(.high-contrast) #screen-title {
+  background:
+    radial-gradient(ellipse 60% 40% at 78% 12%, rgba(255, 246, 224, 0.75), transparent 70%),
+    linear-gradient(180deg, var(--sky-top, #bcd3e8) 0%, var(--sky-horizon, #f4efe4) 78%);
+}
+body[data-gfx-detail="detailed"]:not(.high-contrast) #screen-title::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-size: 200% 100%;
+  background-repeat: repeat-x;
+  background-image:
+    radial-gradient(ellipse 18% 6% at 20% 70%, rgba(255, 255, 255, 0.7), transparent 70%),
+    radial-gradient(ellipse 22% 7% at 55% 82%, rgba(255, 255, 255, 0.6), transparent 70%),
+    radial-gradient(ellipse 16% 5% at 80% 64%, rgba(255, 255, 255, 0.55), transparent 70%),
+    radial-gradient(ellipse 20% 6% at 38% 30%, rgba(255, 255, 255, 0.45), transparent 70%);
+}
+body[data-gfx-detail="detailed"][data-gfx-background="animated"]:not(.reduced-motion) #screen-title::before {
+  animation: vc-cloud-drift 90s linear infinite alternate;
+}
+#screen-title > * { position: relative; }
+@keyframes vc-cloud-drift {
+  from { background-position: 0% 0; }
+  to { background-position: 100% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #screen-title::before { animation: none !important; }
+}
+
+#fps-meter {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 5;
+  pointer-events: none;
+  font: 600 0.75rem/1.2 ui-monospace, monospace;
+  color: #fff;
+  background: rgba(28, 39, 51, 0.62);
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+}
+.gfx-scale { display: inline-flex; align-items: center; gap: 0.5rem; white-space: nowrap; }
+.gfx-scale output { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; }
+.setting-row .gfx-scale input[type="range"] { width: 130px; }
+.setting-row select { max-width: 60%; }
+.gfx-summary { margin: 0.4rem 0 0.6rem; overflow-wrap: anywhere; }
+.gfx-note { color: var(--danger); margin: 0 0 0.6rem; }
+@media (max-width: 560px) {
+  .gfx-select-row { flex-direction: column; align-items: stretch; gap: 0.3rem; }
+  .gfx-select-row select { max-width: none; width: 100%; }
+}

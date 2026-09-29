@@ -11,7 +11,7 @@ const MAX_ARROWS = 168; // 150 live cubes max + in-flight flyout ghosts
 const MAX_STONES = 60;
 const MAX_PATH_DOTS = 16;
 
-function roundedBoxGeometry(size = 0.92, radius = 0.14) {
+function roundedBoxGeometry(size = 0.92, radius = 0.14, smooth = false) {
   const s = size - radius * 2;
   const shape = new THREE.Shape();
   const h = s / 2;
@@ -29,38 +29,54 @@ function roundedBoxGeometry(size = 0.92, radius = 0.14) {
     bevelEnabled: true,
     bevelThickness: radius,
     bevelSize: radius,
-    bevelSegments: 2,
-    curveSegments: 4,
+    bevelSegments: smooth ? 5 : 2,
+    curveSegments: smooth ? 8 : 4,
   });
   geo.center();
   geo.computeVertexNormals();
   return geo;
 }
 
-function panelTexture({ base = '#f6f8fa', frame = 'rgba(30,45,70,0.35)', speckle = 0 }) {
+function panelTexture({ base = '#f6f8fa', frame = 'rgba(30,45,70,0.35)', speckle = 0, grain = 0 }) {
+  const size = grain > 0 ? 256 : 128;
+  const k = size / 128;
   const c = document.createElement('canvas');
-  c.width = c.height = 128;
+  c.width = c.height = size;
   const g = c.getContext('2d');
   g.fillStyle = base;
-  g.fillRect(0, 0, 128, 128);
-  const grad = g.createLinearGradient(0, 0, 128, 128);
+  g.fillRect(0, 0, size, size);
+  const grad = g.createLinearGradient(0, 0, size, size);
   grad.addColorStop(0, 'rgba(255,255,255,0.35)');
   grad.addColorStop(1, 'rgba(0,0,0,0.12)');
   g.fillStyle = grad;
-  g.fillRect(0, 0, 128, 128);
+  g.fillRect(0, 0, size, size);
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  if (grain > 0) {
+    // Deterministic fine grain so flat faces read as glazed ceramic/stone,
+    // plus a soft inset bevel highlight inside the frame.
+    for (let i = 0; i < grain; i++) {
+      const v = rnd();
+      g.fillStyle = v < 0.5 ? `rgba(0,0,0,${0.012 + v * 0.025})` : `rgba(255,255,255,${0.04 + (v - 0.5) * 0.06})`;
+      const r = 0.6 + rnd() * 1.4;
+      g.fillRect(rnd() * size, rnd() * size, r * k, r * k);
+    }
+    g.strokeStyle = 'rgba(255,255,255,0.45)';
+    g.lineWidth = 2 * k;
+    g.strokeRect(14 * k, 14 * k, 100 * k, 100 * k);
+  }
   g.strokeStyle = frame;
-  g.lineWidth = 6;
-  g.strokeRect(8, 8, 112, 112);
+  g.lineWidth = 6 * k;
+  g.strokeRect(8 * k, 8 * k, 112 * k, 112 * k);
   if (speckle > 0) {
-    let seed = 7;
-    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     g.fillStyle = 'rgba(0,0,0,0.18)';
     for (let i = 0; i < speckle; i++) {
-      g.fillRect(rnd() * 120 + 4, rnd() * 120 + 4, 3, 3);
+      g.fillRect((rnd() * 120 + 4) * k, (rnd() * 120 + 4) * k, 3 * k, 3 * k);
     }
   }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
   return tex;
 }
 
@@ -75,8 +91,9 @@ const tmpDir = new THREE.Vector3();
 const tmpOffset = new THREE.Vector3();
 
 export class CubeViews {
-  constructor(scene, theme) {
+  constructor(scene, theme, gfx = {}) {
     this.scene = scene;
+    this.gfx = { detail: 'detailed', reflections: 'on', ...gfx };
     this.group = new THREE.Group();
     this.group.name = 'board';
     scene.add(this.group);
@@ -89,15 +106,21 @@ export class CubeViews {
     this.selectedId = null;
     this.time = 0;
     this._buildMeshes();
+    this.applyGfx({});
   }
 
   _buildMeshes() {
     const t = this.theme.cube;
-    this.arrowGeo = roundedBoxGeometry(0.92, 0.14);
-    this.arrowMat = new THREE.MeshStandardMaterial({
-      map: panelTexture({ base: '#f6f8fa' }),
-      roughness: 0.55,
-      metalness: 0.05,
+    this.arrowGeo = roundedBoxGeometry(0.92, 0.14, this.gfx.detail === 'detailed');
+    const detailed = this.gfx.detail === 'detailed';
+    // Glazed ceramic: a clear coat over a satin base catches the environment
+    // when reflections are on, so the silhouettes read crisply against the sky.
+    this.arrowMat = new THREE.MeshPhysicalMaterial({
+      map: panelTexture({ base: '#f6f8fa', grain: detailed ? 1400 : 0 }),
+      roughness: 0.5,
+      metalness: 0.0,
+      clearcoat: 0,
+      clearcoatRoughness: 0.28,
     });
     this.arrowMesh = new THREE.InstancedMesh(this.arrowGeo, this.arrowMat, MAX_ARROWS);
     this.arrowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -108,7 +131,7 @@ export class CubeViews {
     this.arrowSlots = [];
 
     this.stoneMat = new THREE.MeshStandardMaterial({
-      map: panelTexture({ base: '#9aa0a8', frame: 'rgba(0,0,0,0.4)', speckle: 60 }),
+      map: panelTexture({ base: '#9aa0a8', frame: 'rgba(0,0,0,0.4)', speckle: 60, grain: detailed ? 3200 : 0 }),
       roughness: 0.9,
       metalness: 0.0,
     });
@@ -119,12 +142,14 @@ export class CubeViews {
     this.stoneMesh.count = 0;
     this.stoneSlots = [];
 
-    this.coreMat = new THREE.MeshStandardMaterial({
+    this.coreMat = new THREE.MeshPhysicalMaterial({
       color: t.core,
       emissive: t.core,
       emissiveIntensity: 0.55,
       roughness: 0.3,
       metalness: 0.2,
+      clearcoat: 0,
+      clearcoatRoughness: 0.15,
     });
     this.coreMesh = new THREE.InstancedMesh(this.arrowGeo, this.coreMat, 8);
     this.coreMesh.castShadow = true;
@@ -136,7 +161,7 @@ export class CubeViews {
     // the face the cube exits through — direction is shape, not color.
     const chevGeo = new THREE.ConeGeometry(0.2, 0.3, 4);
     chevGeo.rotateY(Math.PI / 4);
-    this.chevMat = new THREE.MeshStandardMaterial({ color: t.chevron, roughness: 0.5 });
+    this.chevMat = new THREE.MeshPhysicalMaterial({ color: t.chevron, roughness: 0.45, metalness: 0.1, clearcoat: 0, clearcoatRoughness: 0.2 });
     this.chevMesh = new THREE.InstancedMesh(chevGeo, this.chevMat, MAX_ARROWS);
     this.chevMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.chevMesh.count = 0;
@@ -185,6 +210,37 @@ export class CubeViews {
       this.arrowMesh, this.stoneMesh, this.coreMesh,
       this.chevMesh, this.bandMesh, this.dotMesh, this.outline, this.ring,
     );
+  }
+
+  /** Live graphics toggles: clear coat with reflections, surface grain with detail. */
+  applyGfx(gfx) {
+    const prev = this.gfx;
+    this.gfx = { ...this.gfx, ...gfx };
+    const coat = this.gfx.reflections === 'on';
+    this.arrowMat.clearcoat = coat ? 0.65 : 0;
+    this.arrowMat.roughness = coat ? 0.42 : 0.55;
+    this.chevMat.clearcoat = coat ? 0.8 : 0;
+    this.coreMat.clearcoat = coat ? 1 : 0;
+    if (prev.detail !== this.gfx.detail || !this._gfxApplied) {
+      const detailed = this.gfx.detail === 'detailed';
+      if (this._gfxApplied) {
+        const old = this.arrowGeo;
+        this.arrowGeo = roundedBoxGeometry(0.92, 0.14, detailed);
+        for (const m of [this.arrowMesh, this.stoneMesh, this.coreMesh]) m.geometry = this.arrowGeo;
+        old.dispose();
+        this.arrowMat.map.dispose();
+        this.arrowMat.map = panelTexture({ base: '#f6f8fa', grain: detailed ? 1400 : 0 });
+        this.stoneMat.map.dispose();
+        this.stoneMat.map = panelTexture({ base: '#9aa0a8', frame: 'rgba(0,0,0,0.4)', speckle: 60, grain: detailed ? 3200 : 0 });
+      }
+    }
+    this._gfxApplied = true;
+    for (const m of [this.arrowMat, this.stoneMat, this.coreMat, this.chevMat, this.bandMat]) m.needsUpdate = true;
+  }
+
+  /** Emissive boost for the core when bloom can carry it (hierarchy never depends on it). */
+  setCoreGlow(k) {
+    this.coreMat.emissiveIntensity = 0.55 * k;
   }
 
   applyTheme(theme) {

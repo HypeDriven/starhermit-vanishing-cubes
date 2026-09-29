@@ -263,6 +263,97 @@ try {
   const pauseBox = await mob.locator('#btn-pause').boundingBox();
   check('mobile: touch target ≥44px', !!pauseBox && pauseBox.width >= 44 && pauseBox.height >= 44);
   await mob.close();
+
+  // --- graphics settings (desktop + mobile) ------------------------------
+  const gfxConsole = [];
+  const watch = (pg, tag) => {
+    pg.on('pageerror', (err) => pageErrors.push(tag + ': ' + err.message));
+    pg.on('console', (msg) => {
+      if (msg.type() === 'error' || msg.type() === 'warning') gfxConsole.push(tag + ': ' + msg.text());
+    });
+  };
+  const gfxPreset = (pg) => pg.evaluate(() => document.body.dataset.gfxPreset);
+
+  const gd = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  watch(gd, 'gfx-desktop');
+  await gd.goto(base + '/', { waitUntil: 'networkidle' });
+  await gd.waitForSelector('#screen-title:not([hidden])');
+  check('gfx: software GPU resolves Auto to Low', (await gfxPreset(gd)) === 'low');
+  await gd.click('#btn-play');
+  await gd.waitForSelector('#screen-game:not([hidden])');
+  await waitActive(gd);
+  await gd.keyboard.press('Escape');
+  await gd.waitForSelector('#modal-pause:not([hidden])');
+  await gd.click('#btn-pause-settings');
+  await gd.waitForSelector('#modal-settings:not([hidden])');
+  await gd.locator('#gfx-preset').scrollIntoViewIfNeeded();
+  check('gfx: Graphics section visible in settings', await gd.locator('#gfx-section').isVisible());
+  check('gfx: Auto option names the detected tier',
+    /\(.*Low.*\)/.test(await gd.locator('#gfx-preset option[value="auto"]').textContent()));
+  await gd.selectOption('#gfx-preset', 'low');
+  check('gfx: Low applied', (await gfxPreset(gd)) === 'low');
+  await gd.focus('#gfx-preset');
+  await gd.selectOption('#gfx-preset', 'high');
+  check('gfx: High applied', (await gfxPreset(gd)) === 'high');
+  check('gfx: summary shows High cost', /2048² shadows/.test(await gd.locator('#gfx-summary').textContent()));
+  check('gfx: focus stays on the preset control', await gd.evaluate(() => document.activeElement?.id === 'gfx-preset'));
+  await gd.selectOption('#gfx-bloom', 'off');
+  check('gfx: bloom override applied', !/bloom/.test(await gd.locator('#gfx-summary').textContent()));
+  await gd.selectOption('#gfx-preset', 'ultra');
+  check('gfx: preset clears overrides', (await gd.locator('#gfx-bloom').inputValue()) === 'preset');
+  await gd.waitForTimeout(400); // render a few Ultra frames
+  await gd.selectOption('#gfx-preset', 'high');
+  await gd.selectOption('#gfx-bloom', 'off');
+  await gd.check('#gfx-show-fps');
+  check('gfx: frame-rate readout shown', await gd.locator('#fps-meter').isVisible());
+  await gd.click('#btn-settings-close');
+  await gd.waitForTimeout(400); // render a few High frames
+  await gd.reload({ waitUntil: 'networkidle' });
+  await gd.waitForSelector('#screen-title:not([hidden])');
+  check('gfx: preset survives reload', (await gfxPreset(gd)) === 'high');
+  await gd.click('#btn-settings');
+  await gd.waitForSelector('#modal-settings:not([hidden])');
+  check('gfx: override survives reload', (await gd.locator('#gfx-bloom').inputValue()) === 'off');
+  await gd.selectOption('#gfx-preset', 'auto');
+  check('gfx: back to Auto', (await gfxPreset(gd)) === 'low');
+  await gd.click('#btn-settings-close');
+  await gd.close();
+
+  const gm = await browser.newPage({
+    viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+  });
+  watch(gm, 'gfx-mobile');
+  await gm.goto(base + '/', { waitUntil: 'networkidle' });
+  await gm.waitForSelector('#screen-title:not([hidden])');
+  await gm.tap('#btn-play');
+  await gm.waitForSelector('#screen-game:not([hidden])');
+  await gm.tap('#btn-settings');
+  await gm.waitForSelector('#modal-settings:not([hidden])');
+  await gm.locator('#gfx-preset').scrollIntoViewIfNeeded();
+  await gm.selectOption('#gfx-preset', 'high');
+  check('gfx mobile: High applied', (await gfxPreset(gm)) === 'high');
+  await gm.locator('#gfx-reflections').scrollIntoViewIfNeeded();
+  await gm.selectOption('#gfx-reflections', 'off');
+  check('gfx mobile: override applied', !/reflections/.test(await gm.locator('#gfx-summary').textContent()));
+  const fits = await gm.evaluate(() => {
+    const card = document.querySelector('#modal-settings .modal-card').getBoundingClientRect();
+    const sel = document.getElementById('gfx-shadows').getBoundingClientRect();
+    return card.left >= 0 && card.right <= innerWidth && card.bottom <= innerHeight
+      && sel.left >= card.left && sel.right <= card.right
+      && document.documentElement.scrollWidth <= innerWidth;
+  });
+  check('gfx mobile: panel fits the viewport', fits);
+  await gm.locator('#btn-settings-close').scrollIntoViewIfNeeded();
+  await gm.tap('#btn-settings-close');
+  await gm.reload({ waitUntil: 'networkidle' });
+  await gm.waitForSelector('#screen-title:not([hidden])');
+  check('gfx mobile: preset survives reload', (await gfxPreset(gm)) === 'high');
+  await gm.close();
+
+  const realGfx = gfxConsole.filter((e) => !/GPU stall|GroupMarkerNotSet|swiftshader|Automatic fallback to software WebGL/i.test(e));
+  check('gfx: no console errors or warnings (Low…Ultra)', realGfx.length === 0);
+  if (realGfx.length) console.error(realGfx.join('\n'));
 } finally {
   await browser.close();
   server.close();

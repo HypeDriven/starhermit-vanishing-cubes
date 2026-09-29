@@ -10,6 +10,8 @@ import { DEFAULT_BINDINGS, bindingLabel, effectiveKeys } from './bindings.js';
 import { formatMs } from './hud.js';
 import { closeModal } from './a11y.js';
 import { audio } from '../audio/audio.js';
+import { CATEGORIES, PRESETS, choosePreset, normalize, presetTier, resolve, setOverride } from '../render/gfx.js';
+import { gfxStrings } from './gfx-strings.js';
 
 const SCREENS = ['title', 'modes', 'setup', 'game', 'results', 'scores', 'help'];
 
@@ -573,16 +575,8 @@ export function buildSettings(container, settings, ctx, onChange) {
   const secGfx = document.createElement('div');
   secGfx.className = 'settings-section';
   secGfx.innerHTML = '<h3>Graphics</h3>';
-  const tier = document.createElement('select');
-  for (const t of ['auto', 'low', 'medium', 'high']) {
-    const o = document.createElement('option');
-    o.value = t;
-    o.textContent = t[0].toUpperCase() + t.slice(1);
-    tier.appendChild(o);
-  }
-  tier.value = settings.graphics.tier;
-  tier.addEventListener('change', () => onChange('graphics.tier', tier.value));
-  secGfx.append(row('Quality tier', tier));
+  secGfx.id = 'gfx-section';
+  buildGraphicsControls(secGfx, settings.graphics, ctx.gfx || {}, (next) => onChange('graphics', next));
   secGfx.append(row('Reduced motion', checkbox(a.reducedMotion, (v) => onChange('accessibility.reducedMotion', v), 'Reduced motion')));
 
   const swatches = document.createElement('div');
@@ -680,6 +674,102 @@ export function buildSettings(container, settings, ctx, onChange) {
     row('Share anonymous usage stats', checkbox(settings.telemetryConsent, (v) => onChange('telemetryConsent', v), 'Telemetry consent')),
   );
   container.appendChild(secMisc);
+}
+
+// ---------- graphics ----------
+
+function labelledRow(id, text, control) {
+  const r = row(text, control);
+  control.id = id;
+  r.querySelector('label').htmlFor = id;
+  return r;
+}
+
+function selectRow(r) {
+  r.classList.add('gfx-select-row');
+  return r;
+}
+
+function selectOf(options, value) {
+  const sel = document.createElement('select');
+  for (const [v, text] of options) {
+    const o = document.createElement('option');
+    o.value = v;
+    o.textContent = text;
+    sel.appendChild(o);
+  }
+  sel.value = value;
+  return sel;
+}
+
+// Quality preset, render scale, one override per category, adaptive
+// resolution, frame-rate readout and a cost summary. Every control applies
+// immediately; choosing a preset clears the per-category overrides.
+function buildGraphicsControls(sec, savedRaw, gfx, commit) {
+  const t = gfxStrings();
+  const saved = normalize(savedRaw);
+  const detected = gfx.detected || 'balanced';
+  const r = gfx.info?.resolved || resolve(saved, detected);
+  sec.dataset.gfxPreset = r.preset;
+
+  const preset = selectOf([
+    ['auto', t('auto', { tier: t(detected) })],
+    ...PRESETS.map((p) => [p, t(p)]),
+  ], saved.preset);
+  preset.addEventListener('change', () => commit(choosePreset(saved, preset.value)));
+  sec.append(selectRow(labelledRow('gfx-preset', t('quality'), preset)));
+
+  const scaleWrap = document.createElement('span');
+  scaleWrap.className = 'gfx-scale';
+  const scale = document.createElement('input');
+  scale.type = 'range';
+  scale.min = '50';
+  scale.max = '200';
+  scale.step = '5';
+  const pct = Math.round((Number(saved.render_scale) || 1) * 100);
+  scale.value = String(pct);
+  const scaleOut = document.createElement('output');
+  scaleOut.id = 'gfx-scale-value';
+  scaleOut.textContent = pct + '%';
+  scale.addEventListener('input', () => { scaleOut.textContent = scale.value + '%'; });
+  scale.addEventListener('change', () => {
+    audio.play('slider');
+    commit({ ...saved, render_scale: Number(scale.value) / 100 });
+  });
+  scaleWrap.append(scale, scaleOut);
+  const scaleRow = labelledRow('gfx-scale', t('renderScale'), scale);
+  scaleRow.replaceChild(scaleWrap, scale);
+  scaleWrap.prepend(scale);
+  sec.append(scaleRow);
+
+  for (const [cat, tiers] of Object.entries(CATEGORIES)) {
+    const sel = selectOf([
+      ['preset', t('fromPreset', { tier: t(presetTier(r.preset, cat)) })],
+      ...tiers.map((v) => [v, t(v)]),
+    ], tiers.includes(saved[cat]) ? saved[cat] : 'preset');
+    sel.dataset.gfxCat = cat;
+    sel.addEventListener('change', () => commit(setOverride(saved, cat, sel.value)));
+    sec.append(selectRow(labelledRow('gfx-' + cat, t(cat), sel)));
+  }
+
+  sec.append(
+    labelledRow('gfx-adaptive', t('adaptive'), checkbox(saved.adaptive !== false, (v) => commit({ ...saved, adaptive: v }))),
+    labelledRow('gfx-show-fps', t('showFps'), checkbox(!!saved.show_fps, (v) => commit({ ...saved, show_fps: v }))),
+  );
+
+  const summary = document.createElement('p');
+  summary.id = 'gfx-summary';
+  summary.className = 'muted small gfx-summary';
+  summary.textContent = [gfx.info?.gpu || t('unknownGpu'), gfx.info?.summary].filter(Boolean).join(' · ');
+  sec.append(summary);
+  if (gfx.info?.postFailed) {
+    const note = document.createElement('p');
+    note.id = 'gfx-post-note';
+    note.className = 'small gfx-note';
+    note.setAttribute('role', 'status');
+    note.textContent = t('postFailed');
+    sec.append(note);
+  }
 }
 
 // ---------- profile ----------

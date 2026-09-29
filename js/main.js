@@ -16,7 +16,8 @@ import { loadDoc, saveDoc } from './session/persistence.js';
 import { platform } from './platform/platform.js';
 import { audio } from './audio/audio.js';
 import { GameScene } from './render/scene.js';
-import { detectTier } from './render/quality.js';
+import { detectPreset, normalize, resolve } from './render/gfx.js';
+import { gfxStrings } from './ui/gfx-strings.js';
 import {
   showScreen, buildModeCards, buildSetup, renderResults, renderScores, renderHelp,
   buildSettings, buildProfile,
@@ -35,7 +36,7 @@ const $ = (id) => document.getElementById(id);
 
 const DEFAULT_SETTINGS = {
   audio: { music: 0.55, effects: 0.8, ambience: 0.45, voice: 0.8, muted: false, captions: false },
-  graphics: { tier: 'auto' },
+  graphics: { preset: 'auto' },
   accessibility: {
     reducedMotion: false, highContrast: false, largeText: false, palette: 'default',
     leftHanded: false, dragToggle: false, timingAssist: false, hapticsOff: false,
@@ -215,8 +216,35 @@ function currentTheme() {
 
 // ---------- mode → round preparation ----------
 
-function resolveTier() {
-  return settings.graphics.tier === 'auto' ? detectTier() : settings.graphics.tier;
+// Saved graphics settings (migrates the legacy `tier` field in place).
+function gfxSaved() {
+  settings.graphics = normalize(settings.graphics);
+  return settings.graphics;
+}
+
+// Resolved graphics tiers — from the live renderer when there is one.
+function gfxResolved() {
+  return app.scene?.q || resolve(gfxSaved(), detectPreset('', { mobile: /Mobile|Android|iPhone|iPad/i.test(navigator.userAgent) }));
+}
+
+// Mirror the resolved tiers onto the DOM: tests read data-gfx-preset, and the
+// title sky backdrop follows the background/detail tiers.
+function applyGfxDom() {
+  const r = gfxResolved();
+  const b = document.body;
+  b.dataset.gfxPreset = r.preset;
+  b.dataset.gfxBackground = r.background;
+  b.dataset.gfxDetail = r.detail;
+  const canvas = $('gl');
+  if (canvas) canvas.dataset.gfxPreset = r.preset;
+}
+
+function graphicsCtx() {
+  const t = gfxStrings();
+  return {
+    detected: app.scene ? app.scene.detected : gfxResolved().preset,
+    info: app.scene ? app.scene.graphicsInfo(t.words) : null,
+  };
 }
 
 function nextJourneyIndex() {
@@ -859,6 +887,7 @@ function openSettings() {
   buildSettings($('settings-body'), settings, {
     totalStars: totalStars(),
     theme: progression.theme,
+    gfx: graphicsCtx(),
   }, onSettingChange);
   openModal($('modal-settings'));
 }
@@ -906,8 +935,14 @@ function onSettingChange(key, value) {
   applySettingsNow();
   platform.telemetry('settings-change');
   if (key !== 'theme' && key !== 'replay-tutorial') {
-    // Rebuild the form so dependent controls (e.g. rebinding labels) refresh.
-    buildSettings($('settings-body'), settings, { totalStars: totalStars(), theme: progression.theme }, onSettingChange);
+    // Rebuild the form so dependent controls (e.g. rebinding labels) refresh,
+    // keeping keyboard focus on the control that was just changed.
+    const body = $('settings-body');
+    const focusId = body.contains(document.activeElement) ? document.activeElement.id : '';
+    const scrollTop = body.parentElement.scrollTop;
+    buildSettings(body, settings, { totalStars: totalStars(), theme: progression.theme, gfx: graphicsCtx() }, onSettingChange);
+    body.parentElement.scrollTop = scrollTop;
+    if (focusId) $(focusId)?.focus();
   }
 }
 
@@ -916,15 +951,19 @@ function applySettingsNow() {
   audio.applySettings(settings);
   audio.onCaption = settings.audio.captions ? (text) => toast('♪ ' + text, { ms: 1200 }) : null;
   if (app.scene) {
-    app.scene.applyQuality(resolveTier());
+    app.scene.setGraphics(gfxSaved());
     app.scene.setReducedMotion(settings.accessibility.reducedMotion);
     applyThemeNow();
   }
+  applyGfxDom();
 }
 
 function applyThemeNow() {
-  if (!app.scene) return;
   const theme = currentTheme();
+  const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+  document.documentElement.style.setProperty('--sky-top', hex(theme.sky.top));
+  document.documentElement.style.setProperty('--sky-horizon', hex(theme.sky.horizon));
+  if (!app.scene) return;
   app.scene.buildEnvironment(app.level ? app.level.seed : 'title', theme);
   app.scene.cubeViews?.applyTheme(theme);
   document.documentElement.style.setProperty('--accent', theme.ui.accent);
@@ -1423,19 +1462,17 @@ async function boot() {
   if (app.webgl) {
     try {
       app.scene = new GameScene($('gl'), {
-        graphics: { tier: resolveTier() },
+        graphics: gfxSaved(),
         accessibility: settings.accessibility,
       });
-      app.scene.applyQuality(resolveTier());
-      const theme = currentTheme();
-      app.scene.buildEnvironment('title', theme);
-      document.documentElement.style.setProperty('--accent', theme.ui.accent);
       wireCanvasInput($('gl'));
     } catch (err) {
       console.error('renderer init failed', err);
       app.webgl = false;
     }
   }
+  applyThemeNow();
+  applyGfxDom();
   if (!app.webgl) {
     $('canvas-fallback').hidden = false;
     toast('WebGL unavailable — accessible mode is available from the game screen.', { ms: 5000 });

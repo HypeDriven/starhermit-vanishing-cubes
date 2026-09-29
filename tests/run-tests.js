@@ -25,6 +25,11 @@ import { CHALLENGES, challengeLimits } from '../js/content/challenges.js';
 import { THEMES, themeById, unlockedThemes } from '../js/content/themes.js';
 import { ACHIEVEMENTS, evaluateAchievements } from '../js/content/achievements.js';
 import { startServer } from './test-server.mjs';
+import {
+  detectPreset, resolve, presetTier, describe as describeGfx, choosePreset, setOverride, normalize,
+  PRESETS, CATEGORIES,
+} from '../js/render/gfx.js';
+import { gfxStrings, pickLocale, GFX_LOCALES } from '../js/ui/gfx-strings.js';
 
 // ---------- tiny framework ----------
 
@@ -1157,6 +1162,107 @@ test('rate limits surface as recoverable structured 429s', async () => {
 test('server shuts down cleanly', async () => {
   srv.server.close();
   ok(true);
+});
+
+// ===========================================================================
+// graphics quality model (pure)
+// ===========================================================================
+
+describe('gfx');
+
+test('detectPreset maps GPU strings to tiers', () => {
+  eq(detectPreset('ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)), SwiftShader driver)'), 'low');
+  eq(detectPreset('llvmpipe (LLVM 15.0.7, 256 bits)'), 'low');
+  eq(detectPreset('ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0)'), 'high');
+  eq(detectPreset('Apple M2'), 'high');
+  eq(detectPreset('ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11)'), 'balanced');
+  eq(detectPreset('Adreno (TM) 650'), 'balanced');
+  eq(detectPreset(''), 'balanced');
+  eq(detectPreset('Apple M2', { mobile: true }), 'balanced', 'mobile caps auto at balanced');
+  eq(detectPreset('SwiftShader', { mobile: true }), 'low');
+});
+
+test('resolve: auto follows detection, explicit preset wins', () => {
+  const a = resolve({}, 'low');
+  eq(a.preset, 'low');
+  eq(a.auto, true);
+  eq(a.shadows, 'off');
+  eq(a.post, false, 'low renders directly (no post chain)');
+  const h = resolve({ preset: 'high' }, 'low');
+  eq(h.preset, 'high');
+  eq(h.auto, false);
+  eq(h.shadows, 'medium');
+  eq(h.post, true);
+  eq(resolve({ preset: 'bogus' }, 'balanced').preset, 'balanced');
+});
+
+test('resolve: overrides apply and invalid overrides fall back to the preset', () => {
+  const r = resolve({ preset: 'low', bloom: 'on', shadows: 'nope' }, 'low');
+  eq(r.bloom, 'on');
+  eq(r.shadows, presetTier('low', 'shadows'));
+  eq(r.post, true, 'an effect override turns the post chain on');
+});
+
+test('resolve: render scale is clamped to 50–200%', () => {
+  eq(resolve({ preset: 'high', render_scale: 5 }, 'low').scale, 2);
+  eq(resolve({ preset: 'high', render_scale: 0.1 }, 'low').scale, 0.5);
+  eq(resolve({ preset: 'ultra', render_scale: 1 }, 'low').scale, 1.25);
+  eq(resolve({ preset: 'high' }, 'low').adaptive, true);
+  eq(resolve({ preset: 'high', adaptive: false, show_fps: true }, 'low').showFps, true);
+});
+
+test('choosing a preset clears overrides but keeps scale/adaptive/fps', () => {
+  const saved = { preset: 'high', bloom: 'off', ao: 'high', render_scale: 1.5, adaptive: false, show_fps: true };
+  const next = choosePreset(saved, 'low');
+  eq(next.preset, 'low');
+  eq(next.bloom, undefined);
+  eq(next.ao, undefined);
+  eq(next.render_scale, 1.5);
+  eq(next.adaptive, false);
+  eq(next.show_fps, true);
+  eq(choosePreset(saved, 'auto').preset, 'auto');
+});
+
+test('setOverride sets and clears one category', () => {
+  let s = setOverride({ preset: 'high' }, 'bloom', 'off');
+  eq(s.bloom, 'off');
+  s = setOverride(s, 'bloom', 'preset');
+  eq('bloom' in s, false);
+});
+
+test('legacy tier settings migrate to presets', () => {
+  eq(normalize({ tier: 'medium' }).preset, 'balanced');
+  eq(normalize({ tier: 'auto' }).preset, 'auto');
+  eq(normalize({ tier: 'high', preset: 'auto' }).preset, 'high');
+  eq('tier' in normalize({ tier: 'low' }), false);
+});
+
+test('every preset defines every category with an allowed tier', () => {
+  for (const p of PRESETS) {
+    for (const [cat, tiers] of Object.entries(CATEGORIES)) ok(tiers.includes(presetTier(p, cat)), p + '.' + cat);
+  }
+});
+
+test('describe summarises cost', () => {
+  const d = describeGfx(resolve({ preset: 'high' }, 'low'), [800, 600]);
+  ok(/2048² shadows/.test(d) && /SMAA/.test(d) && /800×600 px/.test(d), d);
+  ok(/no shadows/.test(describeGfx(resolve({}, 'low'))));
+});
+
+test('graphics panel strings exist in every required locale', () => {
+  for (const loc of ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT']) {
+    ok(GFX_LOCALES.includes(loc), loc);
+    const t = gfxStrings(loc);
+    for (const k of ['quality', 'renderScale', 'adaptive', 'showFps', 'postFailed', ...Object.keys(CATEGORIES)]) {
+      ok(t(k) && t(k) !== k, loc + ':' + k);
+    }
+  }
+  eq(gfxStrings('de-DE')('shadows'), 'Schatten');
+  eq(gfxStrings('en-GB')('grade'), 'Colour grade');
+  eq(pickLocale(['es-MX']), 'es-419');
+  eq(pickLocale(['fr-CA']), 'fr-CA');
+  eq(pickLocale(['en-AU']), 'en-GB');
+  eq(pickLocale(['ja-JP']), 'en-US');
 });
 
 // ===========================================================================
