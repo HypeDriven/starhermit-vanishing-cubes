@@ -27,7 +27,8 @@ import {
   announce, toast, applyA11yClasses, paletteAdjust, openModal, closeModal,
   buildBoardList,
 } from './ui/a11y.js';
-import { matchKey, GAMEPAD_BUTTONS } from './ui/bindings.js';
+import { matchKey, GAMEPAD_BUTTONS, defaultCodes } from './ui/bindings.js';
+import { platformStrings } from './ui/platform-strings.js';
 
 const BUILD = '1.0.0';
 const $ = (id) => document.getElementById(id);
@@ -83,9 +84,21 @@ const progression = deepMerge(structuredClone(DEFAULT_PROGRESSION), docs.progres
 const profile = deepMerge(structuredClone(DEFAULT_PROFILE), docs.profile.payload);
 const achievementsUnlocked = docs.achievements.payload || {};
 
+// Preferences mirrored to the StarHermit settings KV (controls go through
+// the platform controls API instead).
+const SYNCED_SETTINGS = ['audio', 'graphics', 'accessibility', 'telemetryConsent'];
+let settingsPushTimer = null;
 function saveSettings() {
   docs.settings.rev = saveDoc('settings', settings, docs.settings.rev);
   platform.scheduleCloudSave();
+  if (platform.hosted) {
+    clearTimeout(settingsPushTimer);
+    settingsPushTimer = setTimeout(() => {
+      const out = {};
+      for (const k of SYNCED_SETTINGS) out[k] = settings[k];
+      platform.patchSettings(out);
+    }, 500);
+  }
 }
 function saveProgression() {
   docs.progression.rev = saveDoc('progression', progression, docs.progression.rev);
@@ -807,6 +820,28 @@ function openTitle() {
     : 'A floating sculpture of cubes awaits.';
   const snap = localStorage.getItem('vc.snapshot');
   $('btn-play').textContent = snap ? 'Resume' : 'Play';
+  renderPlatformButtons();
+}
+
+// ---------- StarHermit: sign-in / invite ----------
+
+const pt = platformStrings();
+function renderPlatformButtons() {
+  $('btn-signin').textContent = pt('signIn');
+  $('btn-invite').textContent = pt('invite');
+  $('btn-signin').hidden = !platform.canSignIn();
+  $('btn-invite').hidden = !(platform.hosted && platform.inviteLink());
+}
+
+async function copyInvite() {
+  const link = platform.inviteLink();
+  if (!link) return;
+  try {
+    await navigator.clipboard.writeText(link);
+    toast(pt('inviteCopied'));
+  } catch {
+    toast(pt('inviteFailed', { link }), { ms: 6000 });
+  }
 }
 
 function openModeSelect() {
@@ -914,8 +949,10 @@ function onSettingChange(key, value) {
 
   if (key === 'rebind') {
     settings.controls.overrides[value.action] = [value.key];
+    platform.setControl(value.action, [value.key]);
   } else if (key === 'rebind-reset') {
     settings.controls.overrides = {};
+    platform.resetControls();
   } else if (key === 'theme') {
     progression.theme = value;
     saveProgression();
@@ -1102,7 +1139,7 @@ function onKeyDown(ev) {
   }
 
   if (app.state === 'active') {
-    if (matchKey(ev, 'pause', overrides) || ev.key === 'Escape') {
+    if (matchKey(ev, 'pause', overrides) || matchKey(ev, 'cancel', overrides)) {
       pauseGame('user');
       ev.preventDefault();
       return;
@@ -1136,7 +1173,7 @@ function onKeyDown(ev) {
     return;
   }
 
-  if (app.state === 'results' && ev.key === 'Enter') {
+  if (app.state === 'results' && matchKey(ev, 'confirm', overrides)) {
     $('btn-next').click();
   }
 }
@@ -1182,6 +1219,8 @@ function pollGamepad() {
 // ---------- buttons ----------
 
 function wireButtons() {
+  $('btn-signin').addEventListener('click', () => platform.signIn());
+  $('btn-invite').addEventListener('click', () => copyInvite());
   $('btn-play').addEventListener('click', () => {
     audio.play('ui');
     const snap = localStorage.getItem('vc.snapshot');
@@ -1442,6 +1481,36 @@ async function boot() {
       saveProfile();
     }
   }
+  if (platform.hosted) {
+    // Platform settings win over local ones; key bindings follow the
+    // player's StarHermit overrides.
+    const remoteSettings = await platform.getSettings();
+    let changed = false;
+    for (const k of SYNCED_SETTINGS) {
+      const v = remoteSettings[k];
+      if (v === undefined || v === null || typeof v !== typeof DEFAULT_SETTINGS[k]) continue;
+      settings[k] = typeof v === 'object' ? deepMerge(structuredClone(DEFAULT_SETTINGS[k]), v) : v;
+      changed = true;
+    }
+    const defaults = defaultCodes();
+    const bound = await platform.loadBindings(defaults);
+    const overrides = {};
+    for (const [action, codes] of Object.entries(bound)) {
+      if (JSON.stringify(codes) !== JSON.stringify(defaults[action])) overrides[action] = codes;
+    }
+    if (JSON.stringify(overrides) !== JSON.stringify(settings.controls.overrides)) {
+      settings.controls.overrides = overrides;
+      changed = true;
+    }
+    if (changed) {
+      docs.settings.rev = saveDoc('settings', settings, docs.settings.rev);
+      applyA11yClasses(settings);
+    }
+  }
+  platform.onAuthChange = () => {
+    toast(pt('signedOut'));
+    if (app.state === 'title') renderPlatformButtons();
+  };
   $('net-status').textContent = platform.statusText();
   platform.setTelemetryConsent(settings.telemetryConsent);
 

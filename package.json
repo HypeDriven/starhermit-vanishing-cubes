@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/run-tests.js",
+    "test": "node tests/run-tests.js && node --test tests/platform.test.js",
     "smoke": "node tests/smoke.mjs",
     "captures": "node tests/captures.mjs"
   },

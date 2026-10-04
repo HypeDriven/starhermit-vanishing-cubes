@@ -692,3 +692,20 @@ body[data-gfx-detail="detailed"][data-gfx-background="animated"]:not(.reduced-mo
   .gfx-select-row { flex-direction: column; align-items: stretch; gap: 0.3rem; }
   .gfx-select-row select { max-width: none; width: 100%; }
 }
+
+/* Page-level toasts for menu screens (the stage region is hidden there). */
+#toast-region-global {
+  position: fixed;
+  top: calc(4rem + env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  align-items: center;
+  z-index: 60;
+  pointer-events: none;
+  max-width: min(92vw, 520px);
+  text-align: center;
+  overflow-wrap: anywhere;
+}

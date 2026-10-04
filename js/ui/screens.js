@@ -6,7 +6,7 @@ import { CHAPTERS } from '../content/levels.js';
 import { LESSONS } from '../content/tutorials.js';
 import { CHALLENGES } from '../content/challenges.js';
 import { THEMES } from '../content/themes.js';
-import { DEFAULT_BINDINGS, bindingLabel, effectiveKeys } from './bindings.js';
+import { DEFAULT_BINDINGS, bindingLabel } from './bindings.js';
 import { formatMs } from './hud.js';
 import { closeModal } from './a11y.js';
 import { audio } from '../audio/audio.js';
@@ -636,15 +636,14 @@ export function buildSettings(container, settings, ctx, onChange) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'btn';
-    const current = effectiveKeys(b.action, settings.controls.overrides)[0];
-    btn.textContent = current === ' ' ? 'Space' : current;
+    btn.textContent = bindingLabel(b.action, settings.controls.overrides);
     btn.setAttribute('aria-label', `Rebind ${b.label}`);
     btn.addEventListener('click', () => {
       btn.textContent = 'press a key…';
       const handler = (ev) => {
         ev.preventDefault();
         window.removeEventListener('keydown', handler, true);
-        onChange('rebind', { action: b.action, key: ev.key === ' ' ? 'Space' : ev.key });
+        onChange('rebind', { action: b.action, key: ev.code });
       };
       window.addEventListener('keydown', handler, true);
     });

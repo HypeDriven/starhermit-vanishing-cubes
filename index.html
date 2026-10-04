@@ -13,6 +13,8 @@
     { "imports": { "three": "./vendor/three.module.min.js", "three/addons/": "./vendor/addons/" } }
   </script>
 <script src="browser-guard.js"></script>
+<script src="starhermit-sdk.js"></script>
+<script>window.StarHermit && StarHermit.init();</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -21,6 +23,7 @@
   </noscript>
 
   <div id="app">
+    <div id="toast-region-global" aria-hidden="true"></div>
     <header id="topbar">
       <div class="brand" aria-hidden="true">
         <span class="brand-mark"></span>
@@ -46,6 +49,8 @@
             <button id="btn-journey" class="btn" type="button">Journey</button>
             <button id="btn-scores" class="btn" type="button">Scores</button>
             <button id="btn-modes" class="btn" type="button">All modes</button>
+            <button id="btn-signin" class="btn" type="button" hidden>Sign in with StarHermit</button>
+            <button id="btn-invite" class="btn" type="button" hidden>Invite a friend</button>
           </div>
           <p id="title-progress" class="muted"></p>
         </div>

@@ -22,7 +22,10 @@ export function announce(message, assertive = false) {
 export function toast(message, { assertive = false, ms = 2600 } = {}) {
   // Caption echoes ('♪ …') stay silent — they already represent a sound.
   if (!String(message).startsWith('♪')) audio.play('toast');
-  const region = document.getElementById('toast-region');
+  // In-game toasts sit over the stage; on menus (stage hidden) they use the
+  // page-level region so confirmations such as "invite link copied" show.
+  let region = document.getElementById('toast-region');
+  if (!region || region.offsetParent === null) region = document.getElementById('toast-region-global') || region;
   if (region) {
     const div = document.createElement('div');
     div.className = 'toast';
