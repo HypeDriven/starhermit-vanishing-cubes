@@ -19,6 +19,8 @@ export function showScreen(name) {
   for (const s of SCREENS) {
     const el = document.getElementById('screen-' + s);
     if (el) el.hidden = s !== name;
+    // a screen shown again starts at its top (not where the player last scrolled it)
+    if (el && s === name) el.scrollTop = 0;
   }
   const main = document.getElementById('main');
   if (main) main.focus({ preventScroll: true });

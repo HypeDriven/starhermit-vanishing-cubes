@@ -163,9 +163,11 @@ button { font-family: inherit; }
 
 /* title */
 
-#screen-title { justify-content: center; text-align: center; }
+/* centred when it fits, scrolls from the top when taller than the screen (short landscape) */
+#screen-title { justify-content: flex-start; text-align: center; }
+#screen-title > .title-hero { margin-block: auto; }
 .title-hero h1 {
-  font-size: clamp(2.4rem, 6vw, 4.2rem);
+  font-size: clamp(2.4rem, calc(6vw / var(--ui-scale, 1)), 4.2rem);
   margin: 0 0 0.5rem;
   letter-spacing: -0.02em;
 }
@@ -326,7 +328,7 @@ button { font-family: inherit; }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: clamp(4rem, 18vw, 9rem);
+  font-size: clamp(4rem, calc(18vw / var(--ui-scale, 1)), 9rem);
   font-weight: 800;
   color: var(--ink);
   text-shadow: 0 2px 24px rgba(255, 255, 255, 0.8);
@@ -363,7 +365,7 @@ button { font-family: inherit; }
 .toast {
   background: var(--ink);
   color: #fff;
-  border-radius: 999px;
+  border-radius: 1.2em; /* pill on one line, rounded box when a long message wraps */
   padding: 0.4rem 1rem;
   font-size: 0.88rem;
   animation: toast-in 0.18s ease;
@@ -386,8 +388,9 @@ button { font-family: inherit; }
 
 /* ---------- results ---------- */
 
-#screen-results { justify-content: center; }
+#screen-results { justify-content: flex-start; }
 .results-card {
+  margin-block: auto;
   width: min(560px, 100%);
   background: var(--panel);
   border: 1px solid var(--panel-border);
@@ -427,6 +430,7 @@ button { font-family: inherit; }
 .friends-form label { display: flex; align-items: center; gap: 0.5rem; flex: 1; min-width: 220px; }
 .friends-form input {
   flex: 1;
+  min-width: 0;
   min-height: 40px;
   border-radius: 8px;
   border: 1px solid var(--panel-border);
@@ -475,7 +479,7 @@ button { font-family: inherit; }
   border-radius: var(--radius);
   padding: 1.5rem;
   width: min(380px, 100%);
-  max-height: calc(100dvh - 2rem - var(--sat) - var(--sab));
+  max-height: calc(100dvh / var(--ui-scale, 1) - 2rem - var(--sat) - var(--sab));
   overflow-y: auto;
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.3);
 }
@@ -531,7 +535,7 @@ button { font-family: inherit; }
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  max-height: 50vh;
+  max-height: calc(50vh / var(--ui-scale, 1));
   overflow-y: auto;
 }
 .board-list li button {
@@ -554,7 +558,7 @@ button { font-family: inherit; }
   .rail {
     position: absolute;
     top: 0; bottom: 0;
-    width: min(300px, 84vw);
+    width: min(300px, calc(84vw / var(--ui-scale, 1)));
     box-shadow: 0 0 40px rgba(28, 39, 51, 0.25);
     transition: transform 0.22s ease;
   }
@@ -569,6 +573,9 @@ button { font-family: inherit; }
 
 @media (max-width: 700px) and (orientation: portrait) {
   .brand-name { display: none; }
+  .topbar-actions { min-width: 0; gap: 0.3rem; }
+  .topbar-actions .btn { padding-inline: 0.6rem; }
+  .net-status { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hud-chip { font-size: 0.8rem; max-width: 45%; }
   #playfield { min-height: 0; }
 }
@@ -705,7 +712,19 @@ body[data-gfx-detail="detailed"][data-gfx-background="animated"]:not(.reduced-mo
   align-items: center;
   z-index: 60;
   pointer-events: none;
-  max-width: min(92vw, 520px);
+  max-width: min(calc(92vw / var(--ui-scale, 1)), 520px);
   text-align: center;
   overflow-wrap: anywhere;
+}
+
+/* ---------- large screens ---------- */
+/* ui-scale.js sets --ui-scale (exactly 1 up to 1600x1000, larger above). Every DOM UI
+   layer zooms by it (vw/vh lengths inside them are divided by it); the WebGL canvas stays
+   unzoomed and fills the space the wider rails leave. */
+#topbar, .screen:not(#screen-game), .rail, #hud-top, #countdown, #tutorial-banner,
+#toast-region, #tray-bottom, #canvas-fallback, .modal, #toast-region-global, #fps-meter {
+  zoom: var(--ui-scale, 1);
+}
+html.ui-scaled #game-layout {
+  grid-template-columns: calc(250px * var(--ui-scale)) 1fr calc(250px * var(--ui-scale));
 }
