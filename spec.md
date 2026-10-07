@@ -209,16 +209,16 @@ No module may mutate rules state except through a validated command. Rendering c
 
 ### Achievements and leaderboards
 - Declare a small static achievement set: first completion, mechanic mastery, a sustained streak, a difficult content milestone, and an accessibility-neutral long-term goal. Keys are stable, lowercase identifiers; unlocks are idempotent.
-- Leaderboards are platform-owned and read-only: Scores reads the game's platform board with `StarHermit.leaderboard()` (friends filter passes `scope=friends`), resolving user ids to nicknames. Clients never submit scores; personal bests are kept locally (labeled casual) and cloud-saved. If the game has no platform board, only local records are shown.
+- Scores reads the game's platform board with `StarHermit.leaderboard()` (friends filter passes `scope=friends`), resolving user ids to nicknames. Signed in, every finished ranked round (Daily or Challenge) posts its score through `StarHermit.submitScores({ 'high-score': score })`; `score-script.js` posts it to the `high-score` board (integer, higher is better, 0–100,000). The results card shows "Posting score to the leaderboard…", then "Leaderboard rank: #N" (or "Score posted to the leaderboard." / "Score not posted to the leaderboard."), localized in `js/ui/platform-strings.js`; standalone posts nothing and shows no line. Personal bests are also kept locally (labeled casual) and cloud-saved. If the game has no platform board, only local records are shown.
 - Achievements stay local (part of the cloud-saved document); there is no client or script unlock path on-platform.
 
 ### Sessions and transport
-- The game is solo. The bundled `server.js` is a local dev server (static hosting plus replay-validated boards, activity, presence and telemetry routes); the client no longer calls it. Hosted play uses only the platform routes above, so there are no platform sessions, matchmaking or replays. Ordinary practice runs locally and offline after initial load.
+- The game is solo. The bundled `server.js` is a local dev server (static hosting plus replay-validated boards, activity, presence and telemetry routes); the client no longer calls it. Hosted play uses only the platform routes above; its only platform session is the short practice session that posts a ranked score, so there is no matchmaking or replays. Ordinary practice runs locally and offline after initial load.
 - A daily session records content version, seed, settings affecting difficulty, an ordered input log, score components, and final checksum. Reconnect from the durable session snapshot rather than trusting cached client state.
 - Realtime rooms, peer relay, matchmaking, backfill, and voice are intentionally not used because they add no value to this ruleset.
 
 ### Publishing and operations
-- The bundled `server.js` is the local development server, not a platform game script; no `globalThis.game` (Jint) contract is implemented, so achievements and boards have no script-owned path.
+- The platform script is `score-script.js` (`server=score-script.js` in `starhermit.txt`; canonical copy in the games repo's `tools/score-script.js`): it range-checks a ranked round's score and posts it to the `high-score` board. The bundled `server.js` is the local development server; achievements have no script-owned path.
 - Define control defaults, achievement metadata, and versioned settings before release. Publish immutable build assets, verify the launch path, maintain migration tests for saves, and expose no secret configuration to the client.
 - Capture anonymous funnel events only for start, tutorial step, round end, retry, settings change, and error category. Avoid raw text, precise personal data, and cross-title tracking.
 

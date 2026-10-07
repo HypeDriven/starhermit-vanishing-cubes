@@ -193,6 +193,19 @@ export const platform = {
 
   // ---------- leaderboards ----------
 
+  // Signed in: post a finished ranked round to the platform leaderboards
+  // (score-script.js); resolves { posted, rank } — rank on high-score, or null.
+  async postScore(score) {
+    if (!this.hosted || typeof this.sh.submitScores !== 'function') return { posted: false, rank: null };
+    const keys = await this.sh.submitScores({ 'high-score': score }).catch(() => []);
+    if (!keys || !keys.includes('high-score')) return { posted: false, rank: null };
+    try {
+      const r = await this.sh.leaderboard('high-score', { pageSize: 100 });
+      const me = ((r && r.items) || []).find((i) => i.userId === this.sh.userId);
+      return { posted: true, rank: me ? me.rank : null };
+    } catch { return { posted: true, rank: null }; }
+  },
+
   _localBoards() {
     if (!this._boards) this._boards = loadDoc('boards', { entries: {} }).payload;
     return this._boards;

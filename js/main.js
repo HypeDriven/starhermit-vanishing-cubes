@@ -621,6 +621,21 @@ async function finishRound() {
           ? 'Play again'
           : 'Modes';
 
+  // Signed in: Daily and Challenge rounds post their score to the platform
+  // high-score board; the results card shows the player's rank.
+  const lbLine = $('results-lb');
+  if (lbLine) {
+    lbLine.hidden = !(app.session.ranked && platform.hosted);
+    lbLine.textContent = lbLine.hidden ? '' : pt('lbPosting');
+    if (!lbLine.hidden) {
+      const session = app.session;
+      platform.postScore(result.score).then((r) => {
+        if (app.session !== session) return;
+        lbLine.textContent = !r.posted ? pt('lbNotPosted') : r.rank ? pt('lbRank', { rank: r.rank }) : pt('lbPosted');
+      });
+    }
+  }
+
   renderResults(null, {
     result,
     level: app.level,
