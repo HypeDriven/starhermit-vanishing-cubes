@@ -3,6 +3,7 @@
 // where tools allow). Values are stored as integers and only formatted here.
 
 import { remainingArrows } from '../rules/engine.js';
+import { t, levelName, levelTip } from './i18n.js';
 
 export function formatMs(ms) {
   const total = Math.max(0, Math.round(ms / 1000));
@@ -32,27 +33,23 @@ export function updateHUD(session, level, selectionText = '') {
   }
   if (hasTime) updateClock(session);
 
-  const objective = level.mechanics?.includes('core')
-    ? 'Release every cube to expose the core'
-    : 'Release every cube';
-  el('objective-text').textContent = objective + '.';
-  el('hud-objective').textContent = `${level.name} — ${left} left`;
+  el('objective-text').textContent = level.mechanics?.includes('core') ? t('objectiveCore') : t('objective');
+  el('hud-objective').textContent = t('hudLeft', { name: levelName(level), n: left });
 
-  el('par-text').textContent =
-    `Par: ${level.par.taps} taps · ${level.par.rotations} rotations · ${formatMs(level.par.timeMs)}`;
-  el('tip-text').textContent = level.tip || '';
+  el('par-text').textContent = t('parLine', { taps: level.par.taps, rotations: level.par.rotations, time: formatMs(level.par.timeMs) });
+  el('tip-text').textContent = levelTip(level);
 
   // Live score preview (component breakdown, always visible).
   const score = session.score();
   const c = score.components;
   el('score-preview').innerHTML = '';
   const rows = [
-    ['Released', c.release],
-    ['Completion', c.completion],
-    ['Tap efficiency', c.tapEfficiency],
-    ['Rotation efficiency', c.rotationEfficiency],
-    ['Time bonus', c.timeBonus],
-    ['Invalid taps', -c.invalidPenalty],
+    [t('rowReleased'), c.release],
+    [t('rowCompletion'), c.completion],
+    [t('rowTapEff'), c.tapEfficiency],
+    [t('rowRotEff'), c.rotationEfficiency],
+    [t('rowTime'), c.timeBonus],
+    [t('rowInvalid'), -c.invalidPenalty],
   ];
   for (const [label, value] of rows) {
     const row = document.createElement('div');
@@ -65,7 +62,7 @@ export function updateHUD(session, level, selectionText = '') {
   const total = document.createElement('div');
   total.className = 'row total';
   total.innerHTML = '<span></span><span></span>';
-  total.children[0].textContent = 'Total';
+  total.children[0].textContent = t('total');
   total.children[1].textContent = String(score.total);
   el('score-preview').appendChild(total);
 

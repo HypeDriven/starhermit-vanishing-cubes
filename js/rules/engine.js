@@ -175,6 +175,7 @@ export function explainRelease(state, cubeId) {
       ok: false,
       reason: 'blocked',
       by: hit.id,
+      byStone: hit.kind === 'stone',
       message: `Path blocked by ${hit.kind === 'stone' ? 'a stone cube' : 'cube ' + hit.id}.`,
     };
   }
@@ -269,7 +270,7 @@ export function applyCommand(state, cmd) {
       const ex = explainRelease(st, cmd.cubeId);
       if (!ex.ok) {
         st.stats.invalid += 1;
-        events.push({ type: 'invalid', cubeId: cmd.cubeId, reason: ex.reason, message: ex.message });
+        events.push({ type: 'invalid', cubeId: cmd.cubeId, reason: ex.reason, message: ex.message, keyId: ex.keyId, by: ex.by, byStone: ex.byStone });
         checkTerminalAfterTap(st, events);
         break;
       }

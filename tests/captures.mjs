@@ -1,7 +1,7 @@
 // Fixed-view captures for visual validation: boots the real server, drives
 // the client through title, gameplay (small and large boards, rotated),
 // results, and a portrait-mobile pass, saving PNGs to tests/artifacts/.
-// Requires playwright-core + a Chrome executable (same setup as smoke.mjs).
+// Requires playwright-core + a Chrome executable (same setup as e2e.mjs).
 //
 // Run: npm run captures
 

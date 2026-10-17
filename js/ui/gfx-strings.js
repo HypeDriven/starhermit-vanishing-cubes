@@ -1,6 +1,6 @@
-// Localised strings for the Graphics settings section. The rest of the game is
-// English-only; this panel follows navigator.language, falling back by
-// language and then to en-US.
+// Localised strings for the Graphics settings section. Screens pass the game
+// language (i18n.js locale()); a bare call follows navigator.language,
+// falling back by language and then to en-US.
 
 const S = {
   'en-US': {

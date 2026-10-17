@@ -5,6 +5,7 @@
 // no network calls at all. Tokens live in the SDK's memory only.
 
 import { loadDoc, saveDoc } from '../session/persistence.js';
+import { t } from '../ui/i18n.js';
 
 const CLOUD_DOC_NAMES = ['settings', 'progression', 'profile', 'achievements', 'boards'];
 
@@ -23,6 +24,7 @@ export const platform = {
   syncState: 'offline', // 'synced' | 'saving' | 'offline'
   activityId: null,
   onAuthChange: null, // (signedIn) => void
+  onConflict: null, // saveconflict handler: main.js reloads, merges and saves again
   _boards: null,
   _flushWired: false,
 
@@ -37,7 +39,13 @@ export const platform = {
     this.hosted = true;
     this.userId = sh.userId;
     this.scope = sh.slug;
-    sh.on('saved', (ok) => this.hosted && this._setSync(ok ? 'synced' : 'offline'));
+    sh.on('saved', (ok) => this.hosted && !(sh.saveConflicted && sh.saveConflicted()) && this._setSync(ok ? 'synced' : 'offline'));
+    // A write lost to a newer save from another device: merge and save again.
+    sh.on('saveconflict', () => {
+      if (!this.hosted || !this.onConflict) return;
+      this._setSync('saving');
+      this.onConflict();
+    });
     sh.on('auth', (e) => {
       if (e && e.signedIn) return;
       this.hosted = false;
@@ -58,9 +66,9 @@ export const platform = {
   },
 
   statusText() {
-    if (!this.hosted) return 'local play';
-    const label = { synced: 'synced', saving: 'saving…', offline: 'save offline' }[this.syncState];
-    return 'online · ' + (label || this.syncState);
+    if (!this.hosted) return t('netLocal');
+    const key = { synced: 'netSynced', saving: 'netSaving', offline: 'netOffline' }[this.syncState];
+    return t('netOnline', { state: key ? t(key) : this.syncState });
   },
 
   _setSync(state) {
@@ -155,21 +163,24 @@ export const platform = {
     return this.sh.flushSave(true);
   },
 
-  // Remote-preferred: on conflict the remote snapshot wins (see applyRemoteDocs
-  // in main.js); localStorage stays the offline cache.
+  // The cloud snapshot (main.js merges it into the local docs — see
+  // applyRemoteDocs); localStorage stays the offline cache.
   async loadCloudSave() {
     if (!this.hosted) return null;
     const remote = await this.sh.loadJSON();
-    this._setSync('synced');
+    this._setSync(this.sh.saveLoadFailed && this.sh.saveLoadFailed() ? 'offline' : 'synced');
     return remote && typeof remote === 'object' ? remote : null;
   },
 
-  applyRemoteBoards(remoteDoc) {
-    if (!remoteDoc || typeof remoteDoc !== 'object') return;
+  // Personal-record boards: merged with the local copy (merge(remote, local)).
+  // Returns true when the result differs from the cloud copy (needs writing back).
+  applyRemoteBoards(remoteDoc, merge) {
+    if (!remoteDoc || typeof remoteDoc !== 'object') return false;
     const local = loadDoc('boards', { entries: {} });
-    if (remoteDoc.rev < local.rev) return;
-    this._boards = remoteDoc.payload && typeof remoteDoc.payload === 'object' ? remoteDoc.payload : { entries: {} };
-    saveDoc('boards', this._boards, remoteDoc.rev || 0);
+    const remotePayload = remoteDoc.payload && typeof remoteDoc.payload === 'object' ? remoteDoc.payload : { entries: {} };
+    this._boards = merge ? merge(remotePayload, local.payload || { entries: {} }) : remotePayload;
+    saveDoc('boards', this._boards, Math.max(remoteDoc.rev || 0, local.rev || 0));
+    return JSON.stringify(this._boards) !== JSON.stringify(remotePayload);
   },
 
   // ---------- activity, presence, telemetry ----------

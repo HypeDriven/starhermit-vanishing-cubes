@@ -113,7 +113,7 @@ class AudioEngine {
     const now = performance.now();
     if (now - (this._lastCaption.get(key) || 0) < 900) return;
     this._lastCaption.set(key, now);
-    this.onCaption(text);
+    this.onCaption(text, key); // the UI localizes by key
   }
 
   // ---------- synth primitives ----------

@@ -3,8 +3,8 @@
 // navigable model of the Three.js board — not a description of decorative
 // objects), and CVD-safe palette adjustment of theme colors.
 
-import { DIR_NAMES } from '../rules/engine.js';
 import { audio } from '../audio/audio.js';
+import { t, dirName } from './i18n.js';
 
 const liveEl = () => document.getElementById('sr-live');
 const assertiveEl = () => document.getElementById('sr-assertive');
@@ -123,7 +123,6 @@ function trapKeys(event) {
 
 // ---------- DOM board mirror ----------
 
-const KIND_LABEL = { arrow: 'Cube', stone: 'Stone', core: 'Core' };
 
 export function buildBoardList(listEl, state, legalIds, onRelease) {
   listEl.textContent = '';
@@ -131,7 +130,7 @@ export function buildBoardList(listEl, state, legalIds, onRelease) {
   const others = state.cubes.filter((c) => c.kind !== 'arrow');
   const describe = (c) => {
     const [x, y, z] = c.pos;
-    return `${KIND_LABEL[c.kind]} ${c.id} at (${x}, ${y}, ${z}), facing ${DIR_NAMES[c.dir]}`;
+    return t('describe_' + c.kind, { id: c.id, x, y, z, dir: dirName(c.dir) });
   };
   for (const c of arrows) {
     const li = document.createElement('li');
@@ -140,7 +139,7 @@ export function buildBoardList(listEl, state, legalIds, onRelease) {
     btn.className = 'btn';
     const clear = legalIds.has(c.id);
     const locked = c.lock && !c.lock.open;
-    const status = clear ? 'clear' : locked ? `locked (key ${c.lock.keyId})` : 'blocked';
+    const status = clear ? t('stClear') : locked ? t('stLocked', { key: c.lock.keyId }) : t('stBlocked');
     btn.innerHTML = '';
     const name = document.createElement('span');
     name.textContent = describe(c);
@@ -151,7 +150,7 @@ export function buildBoardList(listEl, state, legalIds, onRelease) {
     btn.disabled = !clear;
     btn.setAttribute(
       'aria-label',
-      `${describe(c)} — ${status}${clear ? '. Activate to release.' : ''}`,
+      clear ? t('mirrorClearAria', { cube: describe(c), status }) : `${describe(c)} — ${status}`,
     );
     if (clear) btn.addEventListener('click', () => onRelease(c.id));
     li.appendChild(btn);
@@ -167,7 +166,7 @@ export function buildBoardList(listEl, state, legalIds, onRelease) {
     name.textContent = describe(c);
     const tag = document.createElement('span');
     tag.className = 'tag';
-    tag.textContent = c.kind === 'stone' ? 'immovable' : 'expose me';
+    tag.textContent = c.kind === 'stone' ? t('stImmovable') : t('stExpose');
     btn.append(name, tag);
     li.appendChild(btn);
     listEl.appendChild(li);

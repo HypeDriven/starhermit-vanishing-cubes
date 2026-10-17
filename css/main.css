@@ -11,6 +11,9 @@
   --paper: #f4f6f8;
   --panel: rgba(255, 255, 255, 0.86);
   --panel-border: rgba(28, 39, 51, 0.14);
+  /* tokens read by the shared game-options.js controls (light theme) */
+  --panel2: #ffffff;
+  --text: var(--ink);
   --danger: #b3372f;
   --radius: 12px;
   --font: "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -575,8 +578,14 @@ button { font-family: inherit; }
   .brand-name { display: none; }
   .topbar-actions { min-width: 0; gap: 0.3rem; }
   .topbar-actions .btn { padding-inline: 0.6rem; }
-  .net-status { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .net-status { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .topbar-actions { flex: 1 1 auto; justify-content: flex-end; }
+  .topbar-actions .btn { flex: none; }
   .hud-chip { font-size: 0.8rem; max-width: 45%; }
+  /* translated objective lines wrap instead of being cut off */
+  #hud-objective { white-space: normal; text-overflow: clip; line-height: 1.25; border-radius: 1rem; overflow-wrap: anywhere; }
+  #hud-top .btn { flex: none; padding-inline: 0.6rem; }
+  #tray-bottom .btn { min-width: 0; padding-inline: 0.3rem; font-size: 0.85rem; overflow-wrap: anywhere; hyphens: auto; }
   #playfield { min-height: 0; }
 }
 

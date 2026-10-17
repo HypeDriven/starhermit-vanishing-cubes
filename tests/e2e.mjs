@@ -1,11 +1,13 @@
-// Headless-browser smoke test for the full client + server stack.
+// Headless-browser end-to-end test for the full client + server stack
+// (formerly tests/smoke.mjs; `npm run smoke` still runs it).
 // Requires playwright-core (devDependency) and a Chrome/Chromium executable
 // (CHROME_PATH env var, or /usr/bin/google-chrome by default).
 //
-// Run: npm run smoke
+// Run: npm run test:e2e
 
 import { setTimeout as delay } from 'node:timers/promises';
 import { startServer } from './test-server.mjs';
+import { launchToken, stubStarHermit } from './starhermit-e2e.mjs';
 
 const CHROME = process.env.CHROME_PATH || '/usr/bin/google-chrome';
 
@@ -180,7 +182,7 @@ try {
     (await page.locator('#mode-cards .card').count()) === 6);
 
   // Daily: setup shows rules facts, then a full ranked round end to end.
-  await page.click('#mode-cards .card:has-text("Daily")');
+  await page.click('#mode-cards .card[data-mode="daily"]');
   await page.waitForSelector('#screen-setup:not([hidden])');
   check('daily setup shows ranked facts', /ranked/i.test(await page.locator('#setup-body').textContent()));
   await page.click('#setup-body .btn.primary');
@@ -196,7 +198,7 @@ try {
 
   // Scores screen: global boards render; the daily board has our entry;
   // the friends filter re-requests with names.
-  await page.click('#mode-cards .card:has-text("Score chase")');
+  await page.click('#mode-cards .card[data-mode="score-chase"]');
   await page.waitForSelector('#screen-scores:not([hidden])');
   await page.waitForFunction(
     () => {
@@ -222,7 +224,7 @@ try {
   await page.waitForSelector('#screen-modes:not([hidden])');
 
   // Learn lesson: banner instructs, required action advances the lesson.
-  await page.click('#mode-cards .card:has-text("Learn")');
+  await page.click('#mode-cards .card[data-mode="learn"]');
   await page.waitForSelector('#screen-setup:not([hidden])');
   await page.locator('#setup-body .level-grid .card').first().click();
   await page.waitForSelector('#screen-game:not([hidden])');
@@ -354,6 +356,93 @@ try {
   const realGfx = gfxConsole.filter((e) => !/GPU stall|GroupMarkerNotSet|swiftshader|Automatic fallback to software WebGL/i.test(e));
   check('gfx: no console errors or warnings (Low…Ultra)', realGfx.length === 0);
   if (realGfx.length) console.error(realGfx.join('\n'));
+
+  // --- language + report (signed in, stubbed StarHermit API) -------------
+  // Automatic follows the account's preferred language (fr-CA); choosing
+  // Italian in Settings relabels in place and PUTs ui.language; Report a
+  // problem posts to /reports; a German round shows German HUD text at 390 px
+  // without overlaps; Automatic from the pause menu re-renders mid-round.
+  for (const [tag, opts] of [
+    ['desktop', { viewport: { width: 1280, height: 800 } }],
+    ['mobile', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }],
+  ]) {
+    const ctx = await browser.newContext(opts);
+    const lp = await ctx.newPage();
+    const langErrors = [];
+    lp.on('pageerror', (err) => pageErrors.push('lang-' + tag + ': ' + err.message));
+    lp.on('console', (msg) => {
+      if ((msg.type() === 'error' || msg.type() === 'warning') && !/GPU stall|GroupMarkerNotSet|swiftshader|Automatic fallback to software WebGL/i.test(msg.text())) langErrors.push(msg.text());
+    });
+    const calls = await stubStarHermit(lp, { preferredLanguage: 'fr-CA' });
+    await lp.goto('about:blank');
+    await lp.goto(base + '/index.html#game_token=' + launchToken(), { waitUntil: 'load' });
+    await lp.waitForSelector('#screen-title:not([hidden])', { timeout: 15000 });
+    await lp.waitForFunction(() => document.documentElement.lang === 'fr-CA', null, { timeout: 15000 });
+    check(`lang ${tag}: Automatic follows the account language (fr-CA)`, (await lp.textContent('#btn-play')).trim() === 'Jouer');
+    await lp.click('#btn-settings');
+    await lp.waitForSelector('#modal-settings:not([hidden])');
+    const choice = lp.locator('#modal-settings [data-game-language="choice"]');
+    await choice.scrollIntoViewIfNeeded();
+    check(`lang ${tag}: Automatic label resolved`, (await choice.locator('option').first().textContent()).trim() === 'Automatique — Français (Canada)');
+    check(`lang ${tag}: one language selector`, (await lp.locator('[data-game-language="choice"]').count()) === 1);
+    await choice.selectOption('it-IT');
+    await lp.waitForFunction(() => document.documentElement.lang === 'it-IT');
+    await lp.waitForFunction(() => /Salvato/.test(document.querySelector('[data-game-language="status"]').textContent));
+    check(`lang ${tag}: ui.language saved`, calls.settings['ui.language']?.choice === 'it-IT');
+    const rel = await lp.evaluate(() => ({
+      h: document.getElementById('settings-heading').textContent,
+      gfx: document.querySelector('#gfx-section h3').textContent,
+      a11y: [...document.querySelectorAll('#settings-own h3')].map((h) => h.textContent).join('|'),
+      stillMounted: !!document.querySelector('#settings-body > [data-game-options-fps]'),
+    }));
+    check(`lang ${tag}: Settings relabelled in place (${rel.h} / ${rel.gfx})`, rel.h === 'Impostazioni' && rel.gfx === 'Grafica' && /Accessibilità/.test(rel.a11y) && rel.stillMounted);
+    await lp.locator('[data-game-report="title"]').scrollIntoViewIfNeeded();
+    await lp.fill('[data-game-report="title"]', 'Test report');
+    await lp.click('[data-game-report="send"]');
+    await lp.waitForFunction(() => /Grazie/.test(document.querySelector('[data-game-report="status"]').textContent));
+    check(`lang ${tag}: Report a problem posted to /reports`, calls.reports?.[0]?.kind === 'bug');
+    await lp.screenshot({ path: `/tmp/vanishing-cubes-e2e-language-${tag}.png` });
+    await choice.selectOption('de-DE');
+    await lp.waitForFunction(() => document.documentElement.lang === 'de-DE');
+    await lp.locator('#btn-settings-close').scrollIntoViewIfNeeded();
+    await lp.click('#btn-settings-close');
+    await lp.waitForFunction(() => document.getElementById('btn-play').textContent === 'Spielen');
+    await lp.screenshot({ path: `/tmp/vanishing-cubes-e2e-german-title-${tag}.png` });
+    await lp.click('#btn-play');
+    await waitActive(lp);
+    await lp.waitForFunction(() => /– noch \d+/.test(document.getElementById('hud-objective').textContent));
+    const leftBefore = Number(await lp.locator('#stat-left').textContent());
+    const layout = await lp.evaluate(() => {
+      const vis = (e) => e && e.offsetParent !== null;
+      const r = (e) => e.getBoundingClientRect();
+      const overlap = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+      const chips = ['hud-objective', 'btn-pause', 'btn-drawer-left', 'btn-drawer-right'].map((id) => document.getElementById(id)).filter(vis);
+      const tray = [...document.querySelectorAll('#tray-bottom .btn, #topbar .btn')].filter(vis);
+      const cut = [...chips, ...tray].some((e) => r(e).right > innerWidth + 1 || r(e).left < -1 || e.scrollWidth > e.clientWidth + 1);
+      let clash = false;
+      for (let i = 0; i < chips.length; i++) for (let j = i + 1; j < chips.length; j++) if (overlap(r(chips[i]), r(chips[j]))) clash = true;
+      return { cut, clash, scrollX: document.documentElement.scrollWidth > innerWidth };
+    });
+    check(`lang ${tag}: German HUD fits without overlaps ${JSON.stringify(layout)}`, !layout.cut && !layout.clash && !layout.scrollX);
+    await lp.screenshot({ path: `/tmp/vanishing-cubes-e2e-german-play-${tag}.png` });
+    await lp.click('#btn-pause');
+    await lp.waitForSelector('#modal-pause:not([hidden])');
+    check(`lang ${tag}: pause in German`, (await lp.textContent('#pause-heading')).trim() === 'Pausiert');
+    await lp.click('#btn-pause-settings');
+    await lp.waitForSelector('#modal-settings:not([hidden])');
+    await choice.scrollIntoViewIfNeeded();
+    await choice.selectOption('auto');
+    await lp.waitForFunction(() => document.documentElement.lang === 'fr-CA');
+    await lp.locator('#btn-settings-close').scrollIntoViewIfNeeded();
+    await lp.click('#btn-settings-close');
+    check(`lang ${tag}: pause re-rendered in French`, (await lp.textContent('#pause-heading')).trim() === 'En pause');
+    await lp.click('#btn-resume');
+    await lp.waitForFunction(() => /— encore \d+/.test(document.getElementById('hud-objective').textContent));
+    check(`lang ${tag}: round kept going (${leftBefore} cubes left)`, Number(await lp.locator('#stat-left').textContent()) === leftBefore && (await lp.textContent('#objective-text')).startsWith('Libérez'));
+    check(`lang ${tag}: no console errors or warnings`, langErrors.length === 0);
+    if (langErrors.length) console.error(langErrors.join('\n'));
+    await ctx.close();
+  }
 } finally {
   await browser.close();
   server.close();
@@ -366,5 +455,5 @@ const realConsoleErrors = consoleErrors.filter((e) => !/WebGL|GPU|swiftshader|fo
 check('no console errors', realConsoleErrors.length === 0);
 if (realConsoleErrors.length) console.error(realConsoleErrors.join('\n'));
 
-console.log(`\nsmoke: ${passed} passed, ${failed} failed`);
+console.log(`\ne2e: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

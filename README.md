@@ -29,7 +29,7 @@ chase (global and friends-filtered boards).
 - `js/content/` — versioned levels, tutorials, challenges, themes, achievements.
 - `tests/run-tests.js` — unit / property / fuzz / golden / server-API tests
   (`npm test`).
-- `tests/smoke.mjs` — headless-browser smoke test (`npm run smoke`; requires
+- `tests/e2e.mjs` — headless-browser end-to-end test (`npm run test:e2e`, alias `npm run smoke`; requires
   `playwright-core` and a Chrome executable, `CHROME_PATH` to override).
 - `tests/captures.mjs` — fixed-view screenshot captures for visual validation
   (`npm run captures`, writes `tests/artifacts/`).

@@ -12,6 +12,7 @@ import { closeModal } from './a11y.js';
 import { audio } from '../audio/audio.js';
 import { CATEGORIES, PRESETS, choosePreset, normalize, presetTier, resolve, setOverride } from '../render/gfx.js';
 import { gfxStrings } from './gfx-strings.js';
+import { t, tn, locale, levelName, playerName } from './i18n.js';
 
 const SCREENS = ['title', 'modes', 'setup', 'game', 'results', 'scores', 'help'];
 
@@ -42,57 +43,22 @@ export function buildModeCards(container, ctx, onChoose) {
   const completed = Object.keys(progression.journeyStars).length;
   const lessonsDone = LESSONS.filter((l) => progression.tutorials[l.id]).length;
   const cards = [
-    {
-      id: 'learn',
-      name: 'Learn',
-      blurb: 'Interactive lessons — one rule at a time, by doing.',
-      badge: 'casual',
-      status: `${lessonsDone}/${LESSONS.length} lessons`,
-    },
-    {
-      id: 'journey',
-      name: 'Journey',
-      blurb: 'Forty authored stages across five chapters.',
-      badge: 'casual',
-      status: `${completed}/40 stages · ${stars}★`,
-    },
-    {
-      id: 'daily',
-      name: 'Daily',
-      blurb: 'One shared board per UTC day, ranked.',
-      badge: 'ranked',
-      status: dailyDone ? 'Completed today ✓' : dailyKey,
-    },
-    {
-      id: 'practice',
-      name: 'Practice',
-      blurb: 'Selectable difficulty, restart and undo. Never ranked.',
-      badge: 'casual',
-      status: '',
-    },
-    {
-      id: 'challenge',
-      name: 'Challenge',
-      blurb: 'Move limits, speed targets, altered layouts.',
-      badge: 'ranked',
-      status: `${CHALLENGES.length} challenges`,
-    },
-    {
-      id: 'score-chase',
-      name: 'Score chase',
-      blurb: 'Global and friends boards on validated seeds.',
-      badge: 'ranked',
-      status: '',
-    },
+    { id: 'learn', name: t('modeLearn'), blurb: t('modeLearnBlurb'), badge: 'casual', status: t('nLessons', { n: lessonsDone, total: LESSONS.length }) },
+    { id: 'journey', name: t('modeJourney'), blurb: t('modeJourneyBlurb'), badge: 'casual', status: t('nStages', { n: completed, stars }) },
+    { id: 'daily', name: t('modeDaily'), blurb: t('modeDailyBlurb'), badge: 'ranked', status: dailyDone ? t('completedToday') : dailyKey },
+    { id: 'practice', name: t('modePractice'), blurb: t('modePracticeBlurb'), badge: 'casual', status: '' },
+    { id: 'challenge', name: t('modeChallenge'), blurb: t('modeChallengeBlurb'), badge: 'ranked', status: t('nChallenges', { n: CHALLENGES.length }) },
+    { id: 'score-chase', name: t('modeScores'), blurb: t('modeScoresBlurb'), badge: 'ranked', status: '' },
   ];
   container.textContent = '';
   for (const c of cards) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'card';
+    btn.dataset.mode = c.id;
     const badge = document.createElement('span');
     badge.className = 'badge' + (c.badge === 'casual' ? ' casual' : '');
-    badge.textContent = c.badge;
+    badge.textContent = c.badge === 'casual' ? t('badgeCasual') : t('badgeRanked');
     const h = document.createElement('h3');
     h.textContent = c.name;
     const p = document.createElement('p');
@@ -131,11 +97,13 @@ export function buildSetup(container, mode, ctx, onStart) {
   if (mode === 'learn') {
     const panel = document.createElement('div');
     panel.className = 'setup-panel';
-    panel.innerHTML = '<h3>Lessons</h3>';
+    const lh = document.createElement('h3');
+    lh.textContent = t('lessonsH');
+    panel.appendChild(lh);
     setupFacts(panel, [
-      ['Rules', 'introduced one at a time'],
-      ['Players', '1'],
-      ['Ranked', 'no'],
+      [t('factRules'), t('factRulesLearn')],
+      [t('factPlayers'), '1'],
+      [t('factRanked'), t('no')],
     ]);
     const grid = document.createElement('div');
     grid.className = 'level-grid';
@@ -145,8 +113,8 @@ export function buildSetup(container, mode, ctx, onStart) {
       btn.type = 'button';
       btn.className = 'card';
       btn.innerHTML = `<h3></h3><p></p>`;
-      btn.querySelector('h3').textContent = (done ? '✓ ' : '') + lesson.name;
-      btn.querySelector('p').textContent = lesson.goal;
+      btn.querySelector('h3').textContent = (done ? '✓ ' : '') + tn('lessons', lesson.id, lesson.name);
+      btn.querySelector('p').textContent = tn('lessonGoals', lesson.id, lesson.goal);
       btn.addEventListener('click', () => onStart({ mode, lessonId: lesson.id }));
       grid.appendChild(btn);
     }
@@ -169,11 +137,11 @@ export function buildSetup(container, mode, ctx, onStart) {
         const ch = CHAPTERS.find((c) => c.id === currentChapter);
         const h = document.createElement('h3');
         h.className = 'chapter-heading';
-        h.textContent = `Chapter ${ch.id} — ${ch.name}`;
+        h.textContent = t('chapterH', { n: ch.id, name: tn('chapters', ch.id, ch.name) });
         container.appendChild(h);
         const blurb = document.createElement('p');
         blurb.className = 'muted small';
-        blurb.textContent = ch.blurb;
+        blurb.textContent = tn('chapterBlurbs', ch.id, ch.blurb);
         container.appendChild(blurb);
         const grid = document.createElement('div');
         grid.className = 'level-grid';
@@ -188,13 +156,13 @@ export function buildSetup(container, mode, ctx, onStart) {
       btn.className = 'card' + (unlocked ? '' : ' locked');
       btn.disabled = !unlocked;
       btn.innerHTML = `<h3></h3><p></p><p class="stars-inline"></p>`;
-      btn.querySelector('h3').textContent = meta.name;
+      btn.querySelector('h3').textContent = levelName(meta);
       btn.querySelector('p').textContent = meta.summary;
       btn.querySelector('.stars-inline').textContent = stars
         ? '★'.repeat(stars) + '☆'.repeat(3 - stars)
         : unlocked
-          ? 'not cleared yet'
-          : 'locked';
+          ? t('notCleared')
+          : t('locked');
       if (unlocked) btn.addEventListener('click', () => onStart({ mode, levelIndex: i }));
       grid.appendChild(btn);
     }
@@ -205,26 +173,26 @@ export function buildSetup(container, mode, ctx, onStart) {
     const panel = document.createElement('div');
     panel.className = 'setup-panel';
     const h = document.createElement('h3');
-    h.textContent = dailyMeta.name;
+    h.textContent = levelName(dailyMeta);
     panel.appendChild(h);
     setupFacts(panel, [
-      ['Seed', dailyMeta.seedLabel],
-      ['Rules', dailyMeta.summary],
-      ['Expected', formatMs(dailyMeta.par.timeMs)],
-      ['Players', '1'],
-      ['Assists', 'hints only — no undo'],
-      ['Ranked', platformInfo.hosted ? 'global board read-only' : 'casual (offline)'],
+      [t('factSeed'), dailyMeta.seedLabel],
+      [t('factRules'), dailyMeta.summary],
+      [t('factExpected'), formatMs(dailyMeta.par.timeMs)],
+      [t('factPlayers'), '1'],
+      [t('factAssists'), t('hintsOnly')],
+      [t('factRanked'), platformInfo.hosted ? t('rankedHosted') : t('rankedOffline')],
     ]);
     if (dailyMeta.doneToday) {
       const p = document.createElement('p');
       p.className = 'muted';
-      p.textContent = `Today's best: ${dailyMeta.doneToday.score} (${dailyMeta.doneToday.completed ? 'cleared' : 'not cleared'})`;
+      p.textContent = t('todaysBest', { score: dailyMeta.doneToday.score, status: dailyMeta.doneToday.completed ? t('cleared') : t('notClearedShort') });
       panel.appendChild(p);
     }
     const start = document.createElement('button');
     start.type = 'button';
     start.className = 'btn primary';
-    start.textContent = dailyMeta.doneToday ? 'Play again' : 'Start the daily';
+    start.textContent = dailyMeta.doneToday ? t('playAgain') : t('startDaily');
     start.addEventListener('click', () => onStart({ mode }));
     panel.appendChild(start);
     container.appendChild(panel);
@@ -234,11 +202,13 @@ export function buildSetup(container, mode, ctx, onStart) {
   if (mode === 'practice') {
     const panel = document.createElement('div');
     panel.className = 'setup-panel';
-    panel.innerHTML = '<h3>Difficulty</h3>';
+    const dh = document.createElement('h3');
+    dh.textContent = t('difficultyH');
+    panel.appendChild(dh);
     setupFacts(panel, [
-      ['Undo', 'allowed'],
-      ['Hints', 'allowed'],
-      ['Ranked', 'never — no effect on ratings'],
+      [t('factUndo'), t('allowed')],
+      [t('factHints'), t('allowed')],
+      [t('factRanked'), t('neverRanked')],
     ]);
     const grid = document.createElement('div');
     grid.className = 'level-grid';
@@ -248,10 +218,8 @@ export function buildSetup(container, mode, ctx, onStart) {
       btn.type = 'button';
       btn.className = 'card';
       btn.innerHTML = `<h3></h3><p></p>`;
-      btn.querySelector('h3').textContent = diff[0].toUpperCase() + diff.slice(1);
-      btn.querySelector('p').textContent =
-        { easy: 'A small solid block.', medium: 'Stones and locks appear.', hard: 'A grand work with a core.' }[diff] +
-        (best != null ? ` Best: ${best}.` : '');
+      btn.querySelector('h3').textContent = t('diff_' + diff);
+      btn.querySelector('p').textContent = t('diffBlurb_' + diff) + (best != null ? ' ' + t('bestN', { n: best }) : '');
       btn.addEventListener('click', () => onStart({ mode, difficulty: diff }));
       grid.appendChild(btn);
     }
@@ -264,9 +232,9 @@ export function buildSetup(container, mode, ctx, onStart) {
     const panel = document.createElement('div');
     panel.className = 'setup-panel';
     setupFacts(panel, [
-      ['Undo', 'disabled'],
-      ['Hints', 'disabled'],
-      ['Ranked', platformInfo.hosted ? 'global board read-only' : 'casual (offline)'],
+      [t('factUndo'), t('disabled')],
+      [t('factHints'), t('disabled')],
+      [t('factRanked'), platformInfo.hosted ? t('rankedHosted') : t('rankedOffline')],
     ]);
     const grid = document.createElement('div');
     grid.className = 'level-grid';
@@ -276,8 +244,8 @@ export function buildSetup(container, mode, ctx, onStart) {
       btn.type = 'button';
       btn.className = 'card';
       btn.innerHTML = `<h3></h3><p></p>`;
-      btn.querySelector('h3').textContent = ch.name;
-      btn.querySelector('p').textContent = ch.blurb + (best != null ? ` Best: ${best}.` : '');
+      btn.querySelector('h3').textContent = tn('challenges', ch.id, ch.name);
+      btn.querySelector('p').textContent = tn('challengeBlurbs', ch.id, ch.blurb) + (best != null ? ' ' + t('bestN', { n: best }) : '');
       btn.addEventListener('click', () => onStart({ mode, challengeId: ch.id }));
       grid.appendChild(btn);
     }
@@ -289,34 +257,33 @@ export function buildSetup(container, mode, ctx, onStart) {
 // ---------- results ----------
 
 const HEADLINES = {
-  cleared: 'Board cleared!',
-  'moves-exhausted': 'Out of moves',
-  'time-exhausted': 'Time is up',
-  conceded: 'Round conceded',
-  'no-legal-moves': 'No legal moves left',
+  cleared: 'headCleared',
+  'moves-exhausted': 'headMoves',
+  'time-exhausted': 'headTime',
+  conceded: 'headConceded',
+  'no-legal-moves': 'headNoMoves',
 };
 
 export function renderResults(target, data) {
   const { result, level, mode, achievements, rankInfo, nextLabel, previousBest } = data;
-  document.getElementById('results-heading').textContent =
-    HEADLINES[result.terminalReason] || 'Round over';
+  document.getElementById('results-heading').textContent = t(HEADLINES[result.terminalReason] || 'headOver');
   document.getElementById('results-sub').textContent =
-    `${level.name} · ${mode} · ${formatMs(result.elapsedMs)}`;
+    `${levelName(level)} · ${t('modeName_' + mode)} · ${formatMs(result.elapsedMs)}`;
 
   const starsEl = document.getElementById('results-stars');
   starsEl.textContent = result.stars > 0 ? '★'.repeat(result.stars) + '☆'.repeat(3 - result.stars) : '';
-  starsEl.setAttribute('aria-label', `${result.stars} of 3 stars`);
+  starsEl.setAttribute('aria-label', t('starsOf3', { n: result.stars }));
 
   const tbody = document.querySelector('#results-table tbody');
   tbody.textContent = '';
   const c = result.components;
   const rows = [
-    ['Cubes released × ' + result.stats.released, c.release],
-    ['Completion', c.completion],
-    ['Tap efficiency', c.tapEfficiency],
-    ['Rotation efficiency', c.rotationEfficiency],
-    ['Time bonus', c.timeBonus],
-    ['Invalid taps × ' + result.stats.invalid, -c.invalidPenalty],
+    [t('rowReleasedN', { n: result.stats.released }), c.release],
+    [t('rowCompletion'), c.completion],
+    [t('rowTapEff'), c.tapEfficiency],
+    [t('rowRotEff'), c.rotationEfficiency],
+    [t('rowTime'), c.timeBonus],
+    [t('rowInvalidN', { n: result.stats.invalid }), -c.invalidPenalty],
   ];
   for (const [label, value] of rows) {
     const tr = document.createElement('tr');
@@ -331,7 +298,7 @@ export function renderResults(target, data) {
   tr.className = 'total';
   const a = document.createElement('td');
   const b = document.createElement('td');
-  a.textContent = 'Total';
+  a.textContent = t('total');
   b.textContent = String(result.score);
   tr.append(a, b);
   tbody.appendChild(tr);
@@ -341,28 +308,26 @@ export function renderResults(target, data) {
   for (const ach of achievements || []) {
     const chip = document.createElement('div');
     chip.className = 'achievement-chip';
-    chip.textContent = `Achievement unlocked: ${ach.name} — ${ach.desc}`;
+    const [name, desc] = tn('achievements', ach.key, [ach.name, ach.desc]);
+    chip.textContent = t('achievementChip', { name, desc });
     achEl.appendChild(chip);
   }
 
   const cmp = document.getElementById('results-comparison');
   const parts = [];
   if (rankInfo?.rank) {
-    parts.push(`Rank #${rankInfo.rank} on the board${rankInfo.validated ? ' (validated)' : ' (casual)'}.`);
+    parts.push(t(rankInfo.validated ? 'rankValidated' : 'rankCasual', { rank: rankInfo.rank }));
   }
   if (previousBest != null) {
-    parts.push(
-      result.score > previousBest
-        ? `New personal best (was ${previousBest}).`
-        : `Personal best: ${previousBest}.`,
-    );
+    parts.push(result.score > previousBest ? t('newBest', { n: previousBest }) : t('personalBest', { n: previousBest }));
   }
   cmp.textContent = parts.join(' ');
 
   const nextBtn = document.getElementById('btn-next');
-  nextBtn.textContent = nextLabel || 'Next';
+  // nextLabel is a string key (nextStage / nextLesson / playAgain / modes).
+  nextBtn.textContent = t(nextLabel || 'next');
   // When the only continuation is "Modes", the exit button already covers it.
-  nextBtn.hidden = !nextLabel || nextLabel === 'Modes';
+  nextBtn.hidden = !nextLabel || nextLabel === 'modes';
 }
 
 // ---------- scores ----------
@@ -376,29 +341,32 @@ function boardPanel(title, res, progression) {
   const table = document.createElement('table');
   table.className = 'board-table';
   table.innerHTML =
-    '<thead><tr><th>#</th><th>Player</th><th class="num">Score</th><th class="num">Invalid</th><th class="num">Time</th></tr></thead>';
+    '<thead><tr><th>#</th><th></th><th class="num"></th><th class="num"></th><th class="num"></th></tr></thead>';
+  ['colPlayer', 'colScore', 'colInvalid', 'colTime'].forEach((k, i) => { table.querySelectorAll('th')[i + 1].textContent = t(k); });
   const tbody = document.createElement('tbody');
   table.appendChild(tbody);
   panel.appendChild(table);
   if (!res.ok) {
-    tbody.innerHTML = '<tr><td colspan="5">Board unavailable (' + res.error + '). Try again later.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5"></td></tr>';
+    tbody.querySelector('td').textContent = t('boardUnavailable', { error: res.error });
     return panel;
   }
   if (res.casual) {
     const p = document.createElement('p');
     p.className = 'board-note';
-    p.textContent = 'Casual board — replay validation unavailable.';
+    p.textContent = t('casualBoard');
     panel.appendChild(p);
   }
   if (!res.entries.length) {
-    tbody.innerHTML = '<tr><td colspan="5">No entries yet. Be the first.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5"></td></tr>';
+    tbody.querySelector('td').textContent = t('noEntries');
     return panel;
   }
   res.entries.slice(0, 10).forEach((entry, i) => {
     const tr = document.createElement('tr');
-    const name = entry.name || 'Guest';
+    const name = playerName(entry.name || 'Guest');
     tr.innerHTML = `<td>${i + 1}</td><td></td><td class="num">${entry.score}</td><td class="num">${entry.invalid ?? 0}</td><td class="num">${formatMs(entry.elapsedMs || 0)}</td>`;
-    tr.children[1].textContent = name + (entry.sessionId && entry.sessionId === progression.lastSessionId ? ' (you)' : '');
+    tr.children[1].textContent = name + (entry.sessionId && entry.sessionId === progression.lastSessionId ? t('youTag') : '');
     tbody.appendChild(tr);
   });
   return panel;
@@ -409,9 +377,7 @@ export async function renderScores(container, ctx, friendNames = []) {
   container.textContent = '';
   const note = document.createElement('p');
   note.className = 'board-note';
-  note.textContent = platform.hosted
-    ? 'The global board is platform-owned and read-only. Records below are your personal bests on this device, synced to your account.'
-    : 'Offline: boards are local and labeled casual. Connect through the host for the global board.';
+  note.textContent = platform.hosted ? t('scoresHosted') : t('scoresOffline');
   container.appendChild(note);
 
   // Compact friends filter: compare against known display names. No social
@@ -419,20 +385,20 @@ export async function renderScores(container, ctx, friendNames = []) {
   const frForm = document.createElement('form');
   frForm.className = 'friends-form';
   const frLabel = document.createElement('label');
-  frLabel.textContent = 'Friends:';
+  frLabel.textContent = t('friendsLabel');
   const frInput = document.createElement('input');
   frInput.type = 'text';
   frInput.maxLength = 200;
-  frInput.placeholder = 'display names, comma-separated';
+  frInput.placeholder = t('friendsPlaceholder');
   frInput.value = friendNames.join(', ');
   frLabel.appendChild(frInput);
   const frBtn = document.createElement('button');
   frBtn.type = 'submit';
   frBtn.className = 'btn';
-  frBtn.textContent = friendNames.length ? 'Clear filter' : 'Compare';
+  frBtn.textContent = friendNames.length ? t('clearFilter') : t('compare');
   const frHint = document.createElement('span');
   frHint.className = 'muted small';
-  frHint.textContent = friendNames.length ? `Showing: ${friendNames.join(', ')}` : '';
+  frHint.textContent = friendNames.length ? t('showing', { names: friendNames.join(', ') }) : '';
   frForm.append(frLabel, frBtn, frHint);
   frForm.addEventListener('submit', (ev) => {
     ev.preventDefault();
@@ -452,10 +418,10 @@ export async function renderScores(container, ctx, friendNames = []) {
     if (g === null) {
       const p = document.createElement('p');
       p.className = 'board-note';
-      p.textContent = 'No global board for this game yet — showing this device’s records.';
+      p.textContent = t('noGlobalBoard');
       container.appendChild(p);
     } else {
-      container.appendChild(boardPanel('Global — all players', g, progression));
+      container.appendChild(boardPanel(t('globalAll'), g, progression));
     }
   }
 
@@ -471,22 +437,10 @@ export function renderHelp(container, settings) {
   container.textContent = '';
   const overrides = settings.controls.overrides;
   const rules = [
-    {
-      title: 'Goal',
-      body: 'Every cube with an arrow wants to leave. A cube can leave only when its arrow path to the sky is clear. Release every cube to win; some boards hide a core to expose.',
-    },
-    {
-      title: 'Stones and locks',
-      body: 'Grey stones never move. Banded cubes are locked until their glowing key cube is released.',
-    },
-    {
-      title: 'Scoring',
-      body: 'Points for every release, a completion bonus, and efficiency bonuses for staying under par taps, rotations and time. Invalid taps cost points.',
-    },
-    {
-      title: 'Reading the board',
-      body: 'Select or hover a cube to preview its path. The Board list button shows every cube, its direction and its state in text.',
-    },
+    { title: t('helpGoal'), body: t('helpGoalText') },
+    { title: t('helpStones'), body: t('helpStonesText') },
+    { title: t('helpScoring'), body: t('helpScoringText') },
+    { title: t('helpReading'), body: t('helpReadingText') },
   ];
   for (const r of rules) {
     const card = document.createElement('div');
@@ -501,7 +455,7 @@ export function renderHelp(container, settings) {
   const controls = document.createElement('div');
   controls.className = 'rule-card';
   const h = document.createElement('h3');
-  h.textContent = 'Controls';
+  h.textContent = t('helpControls');
   controls.appendChild(h);
   const list = document.createElement('p');
   const parts = DEFAULT_BINDINGS.map((b) => {
@@ -509,18 +463,27 @@ export function renderHelp(container, settings) {
       .split(' / ')
       .map((k) => `<kbd>${k}</kbd>`)
       .join(' ');
-    return `${b.label}: ${keys} · gamepad ${b.gamepad}`;
+    return `${escapeHtml(t('bind_' + b.action))}: ${keys} · ${escapeHtml(t('gamepadN', { button: t('pad_' + b.action) }))}`;
   });
   list.innerHTML = parts.join('<br>');
   controls.appendChild(list);
   const touch = document.createElement('p');
-  touch.textContent =
-    'Touch: tap a cube to release it, drag on empty sky to rotate. Mouse: click and drag the same way.';
+  touch.textContent = t('helpTouch');
   controls.appendChild(touch);
   container.appendChild(controls);
 }
 
 // ---------- settings ----------
+
+function heading3(text) {
+  const h = document.createElement('h3');
+  h.textContent = text;
+  return h;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+}
 
 function row(labelText, control) {
   const div = document.createElement('div');
@@ -563,23 +526,23 @@ export function buildSettings(container, settings, ctx, onChange) {
 
   const secAudio = document.createElement('div');
   secAudio.className = 'settings-section';
-  secAudio.innerHTML = '<h3>Audio</h3>';
+  secAudio.appendChild(heading3(t('audio')));
   secAudio.append(
-    row('Music', slider(settings.audio.music, (v) => onChange('audio.music', v))),
-    row('Effects', slider(settings.audio.effects, (v) => onChange('audio.effects', v))),
-    row('Ambience', slider(settings.audio.ambience, (v) => onChange('audio.ambience', v))),
-    row('Voice (unused in this title)', slider(settings.audio.voice, (v) => onChange('audio.voice', v))),
-    row('Mute all', checkbox(settings.audio.muted, (v) => onChange('audio.muted', v), 'Mute all audio')),
-    row('Captions for meaningful sounds', checkbox(settings.audio.captions, (v) => onChange('audio.captions', v), 'Captions')),
+    row(t('music'), slider(settings.audio.music, (v) => onChange('audio.music', v))),
+    row(t('effects'), slider(settings.audio.effects, (v) => onChange('audio.effects', v))),
+    row(t('ambience'), slider(settings.audio.ambience, (v) => onChange('audio.ambience', v))),
+    row(t('voice'), slider(settings.audio.voice, (v) => onChange('audio.voice', v))),
+    row(t('muteAll'), checkbox(settings.audio.muted, (v) => onChange('audio.muted', v), t('muteAllAria'))),
+    row(t('captions'), checkbox(settings.audio.captions, (v) => onChange('audio.captions', v), t('captionsAria'))),
   );
   container.appendChild(secAudio);
 
   const secGfx = document.createElement('div');
   secGfx.className = 'settings-section';
-  secGfx.innerHTML = '<h3>Graphics</h3>';
+  secGfx.appendChild(heading3(t('graphics')));
   secGfx.id = 'gfx-section';
   buildGraphicsControls(secGfx, settings.graphics, ctx.gfx || {}, (next) => onChange('graphics', next));
-  secGfx.append(row('Reduced motion', checkbox(a.reducedMotion, (v) => onChange('accessibility.reducedMotion', v), 'Reduced motion')));
+  secGfx.append(row(t('reducedMotion'), checkbox(a.reducedMotion, (v) => onChange('accessibility.reducedMotion', v), t('reducedMotion'))));
 
   const swatches = document.createElement('div');
   swatches.className = 'theme-swatches';
@@ -589,29 +552,30 @@ export function buildSettings(container, settings, ctx, onChange) {
     sw.type = 'button';
     sw.className = 'theme-swatch' + (ctx.theme === theme.id ? ' selected' : '') + (unlocked ? '' : ' locked');
     sw.style.background = `linear-gradient(#${theme.sky.top.toString(16).padStart(6, '0')}, #${theme.sky.horizon.toString(16).padStart(6, '0')})`;
-    sw.setAttribute('aria-label', theme.name + (unlocked ? '' : ` — locked, needs ${theme.unlockStars} stars`));
+    const themeLabel = tn('themes', theme.id, theme.name);
+    sw.setAttribute('aria-label', unlocked ? themeLabel : t('themeLocked', { name: themeLabel, n: theme.unlockStars }));
     const span = document.createElement('span');
-    span.textContent = unlocked ? theme.name : `🔒 ${theme.unlockStars}★`;
+    span.textContent = unlocked ? themeLabel : `🔒 ${theme.unlockStars}★`;
     sw.appendChild(span);
     if (unlocked) sw.addEventListener('click', () => onChange('theme', theme.id));
     swatches.appendChild(sw);
   }
   const themeRow = document.createElement('div');
   themeRow.className = 'setting-row';
-  const themeLabel = document.createElement('label');
-  themeLabel.textContent = 'Theme (cosmetic only)';
-  themeRow.append(themeLabel, swatches);
+  const themeRowLabel = document.createElement('label');
+  themeRowLabel.textContent = t('themeRow');
+  themeRow.append(themeRowLabel, swatches);
   secGfx.appendChild(themeRow);
   container.appendChild(secGfx);
 
   const secA11y = document.createElement('div');
   secA11y.className = 'settings-section';
-  secA11y.innerHTML = '<h3>Accessibility</h3>';
+  secA11y.appendChild(heading3(t('accessibility')));
   const palette = document.createElement('select');
   for (const [value, label] of [
-    ['default', 'Default'],
-    ['cvd-safe', 'Color-vision safe'],
-    ['mono-safe', 'High separation'],
+    ['default', t('palDefault')],
+    ['cvd-safe', t('palCvd')],
+    ['mono-safe', t('palMono')],
   ]) {
     const o = document.createElement('option');
     o.value = value;
@@ -621,27 +585,27 @@ export function buildSettings(container, settings, ctx, onChange) {
   palette.value = a.palette;
   palette.addEventListener('change', () => onChange('accessibility.palette', palette.value));
   secA11y.append(
-    row('Color palette', palette),
-    row('High contrast', checkbox(a.highContrast, (v) => onChange('accessibility.highContrast', v), 'High contrast')),
-    row('Larger text', checkbox(a.largeText, (v) => onChange('accessibility.largeText', v), 'Larger text')),
-    row('Left-handed controls', checkbox(a.leftHanded, (v) => onChange('accessibility.leftHanded', v), 'Left-handed')),
-    row('Toggle drag (tap to grab camera)', checkbox(a.dragToggle, (v) => onChange('accessibility.dragToggle', v), 'Toggle drag')),
-    row('Timing assistance (relaxed clocks, unranked)', checkbox(a.timingAssist, (v) => onChange('accessibility.timingAssist', v), 'Timing assistance')),
-    row('Haptics off', checkbox(a.hapticsOff, (v) => onChange('accessibility.hapticsOff', v), 'Haptics off')),
+    row(t('colorPalette'), palette),
+    row(t('highContrast'), checkbox(a.highContrast, (v) => onChange('accessibility.highContrast', v), t('highContrast'))),
+    row(t('largerText'), checkbox(a.largeText, (v) => onChange('accessibility.largeText', v), t('largerText'))),
+    row(t('leftHanded'), checkbox(a.leftHanded, (v) => onChange('accessibility.leftHanded', v), t('leftHanded'))),
+    row(t('dragToggle'), checkbox(a.dragToggle, (v) => onChange('accessibility.dragToggle', v), t('dragToggle'))),
+    row(t('timingAssist'), checkbox(a.timingAssist, (v) => onChange('accessibility.timingAssist', v), t('timingAssist'))),
+    row(t('hapticsOff'), checkbox(a.hapticsOff, (v) => onChange('accessibility.hapticsOff', v), t('hapticsOff'))),
   );
   container.appendChild(secA11y);
 
   const secCtl = document.createElement('div');
   secCtl.className = 'settings-section';
-  secCtl.innerHTML = '<h3>Keyboard controls</h3>';
+  secCtl.appendChild(heading3(t('keyboardControls')));
   for (const b of DEFAULT_BINDINGS) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'btn';
     btn.textContent = bindingLabel(b.action, settings.controls.overrides);
-    btn.setAttribute('aria-label', `Rebind ${b.label}`);
+    btn.setAttribute('aria-label', t('rebindAria', { action: t('bind_' + b.action) }));
     btn.addEventListener('click', () => {
-      btn.textContent = 'press a key…';
+      btn.textContent = t('pressKey');
       const handler = (ev) => {
         ev.preventDefault();
         window.removeEventListener('keydown', handler, true);
@@ -649,30 +613,30 @@ export function buildSettings(container, settings, ctx, onChange) {
       };
       window.addEventListener('keydown', handler, true);
     });
-    secCtl.appendChild(row(b.label, btn));
+    secCtl.appendChild(row(t('bind_' + b.action), btn));
   }
   const reset = document.createElement('button');
   reset.type = 'button';
   reset.className = 'btn ghost';
-  reset.textContent = 'Reset all bindings';
+  reset.textContent = t('resetBindings');
   reset.addEventListener('click', () => onChange('rebind-reset'));
   secCtl.appendChild(reset);
   container.appendChild(secCtl);
 
   const secMisc = document.createElement('div');
   secMisc.className = 'settings-section';
-  secMisc.innerHTML = '<h3>Gameplay & privacy</h3>';
+  secMisc.appendChild(heading3(t('gameplayPrivacy')));
   const replayTut = document.createElement('button');
   replayTut.type = 'button';
   replayTut.className = 'btn';
-  replayTut.textContent = 'Replay lessons';
+  replayTut.textContent = t('replayLessons');
   replayTut.addEventListener('click', () => {
     onChange('replay-tutorial');
     closeModal(document.getElementById('modal-settings'));
   });
   secMisc.append(
-    row('Tutorial', replayTut),
-    row('Share anonymous usage stats', checkbox(settings.telemetryConsent, (v) => onChange('telemetryConsent', v), 'Telemetry consent')),
+    row(t('tutorial'), replayTut),
+    row(t('telemetry'), checkbox(settings.telemetryConsent, (v) => onChange('telemetryConsent', v), t('telemetry'))),
   );
   container.appendChild(secMisc);
 }
@@ -707,7 +671,7 @@ function selectOf(options, value) {
 // resolution, frame-rate readout and a cost summary. Every control applies
 // immediately; choosing a preset clears the per-category overrides.
 function buildGraphicsControls(sec, savedRaw, gfx, commit) {
-  const t = gfxStrings();
+  const t = gfxStrings(locale());
   const saved = normalize(savedRaw);
   const detected = gfx.detected || 'balanced';
   const r = gfx.info?.resolved || resolve(saved, detected);
@@ -779,19 +743,17 @@ export function buildProfile(container, profile, progression, ctx, onSave) {
   container.textContent = '';
   const p = document.createElement('p');
   p.className = 'muted small';
-  p.textContent = ctx.hosted
-    ? `Signed in as ${profile.name} — your account nickname (change it in your platform profile). Progress syncs to your account.`
-    : 'Guest profile stored on this device. Sign-in becomes available when hosted.';
+  p.textContent = ctx.hosted ? t('profileHosted', { name: playerName(profile.name) }) : t('profileGuest');
   container.appendChild(p);
 
   const nameRow = document.createElement('div');
   nameRow.className = 'setting-row';
   const label = document.createElement('label');
-  label.textContent = ctx.hosted ? 'Account nickname' : 'Display name';
+  label.textContent = ctx.hosted ? t('accountNickname') : t('displayName');
   const input = document.createElement('input');
   input.type = 'text';
   input.maxLength = 24;
-  input.value = profile.name;
+  input.value = profile.name === 'Guest' ? t('guest') : profile.name;
   input.disabled = ctx.hosted;
   nameRow.append(label, input);
   container.appendChild(nameRow);
@@ -799,13 +761,16 @@ export function buildProfile(container, profile, progression, ctx, onSave) {
   const stars = Object.values(progression.journeyStars).reduce((x, y) => x + y, 0);
   const stats = document.createElement('p');
   stats.className = 'muted';
-  stats.textContent =
-    `${stars} journey stars · ${Object.keys(progression.journeyStars).length}/40 stages · ` +
-    `${progression.totals.released} cubes released · daily streak ${ctx.dailyStreak}`;
+  stats.textContent = t('profileStats', {
+    stars, stages: Object.keys(progression.journeyStars).length, released: progression.totals.released, streak: ctx.dailyStreak,
+  });
   container.appendChild(stats);
 
   if (!ctx.hosted) {
-    input.addEventListener('change', () => onSave(input.value.trim() || 'Guest'));
+    input.addEventListener('change', () => {
+      const v = input.value.trim();
+      onSave(!v || v === t('guest') ? 'Guest' : v);
+    });
   } else {
     input.addEventListener('change', () => { input.value = profile.name; });
   }

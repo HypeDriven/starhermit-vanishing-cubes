@@ -10,6 +10,7 @@
   <link rel="icon" type="image/png" href="favicon.png" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='4' width='24' height='24' rx='5' fill='%23f6f8fa' stroke='%232e3d55' stroke-width='2'/%3E%3Cpath d='M11 16h10m0 0-4-4m4 4-4 4' stroke='%232e3d55' stroke-width='2.5' fill='none'/%3E%3C/svg%3E" />
   <script src="game-options.js" data-game="vanishing-cubes"></script>
+  <script src="sh-language.js"></script>
 <script type="importmap">
     { "imports": { "three": "./vendor/three.module.min.js", "three/addons/": "./vendor/addons/" } }
   </script>
@@ -19,7 +20,7 @@
 <script>window.StarHermit && StarHermit.init();</script>
 </head>
 <body>
-  <a class="skip-link" href="#main">Skip to main content</a>
+  <a class="skip-link" href="#main" data-i18n="skipLink">Skip to main content</a>
   <noscript>
     <div class="noscript">Vanishing Cubes needs JavaScript to run.</div>
   </noscript>
@@ -33,9 +34,9 @@
       </div>
       <div class="topbar-actions">
         <span id="net-status" class="net-status" role="status">local</span>
-        <button id="btn-profile" class="btn ghost" type="button">Profile</button>
-        <button id="btn-help" class="btn ghost" type="button">Help</button>
-        <button id="btn-settings" class="btn ghost" type="button">Settings</button>
+        <button id="btn-profile" class="btn ghost" type="button" data-i18n="profile">Profile</button>
+        <button id="btn-help" class="btn ghost" type="button" data-i18n="help">Help</button>
+        <button id="btn-settings" class="btn ghost" type="button" data-i18n="settings">Settings</button>
       </div>
     </header>
 
@@ -44,13 +45,13 @@
       <section id="screen-title" class="screen" aria-labelledby="title-heading">
         <div class="title-hero">
           <h1 id="title-heading">Vanishing Cubes</h1>
-          <p class="tagline">Rotate the sculpture. Release every cube whose arrow path is clear. Expose the core.</p>
+          <p class="tagline" data-i18n="tagline">Rotate the sculpture. Release every cube whose arrow path is clear. Expose the core.</p>
           <button id="btn-play" class="btn primary xl" type="button">Play</button>
           <div class="title-secondary">
-            <button id="btn-daily" class="btn" type="button">Daily challenge</button>
-            <button id="btn-journey" class="btn" type="button">Journey</button>
-            <button id="btn-scores" class="btn" type="button">Scores</button>
-            <button id="btn-modes" class="btn" type="button">All modes</button>
+            <button id="btn-daily" class="btn" type="button" data-i18n="dailyChallenge">Daily challenge</button>
+            <button id="btn-journey" class="btn" type="button" data-i18n="modeJourney">Journey</button>
+            <button id="btn-scores" class="btn" type="button" data-i18n="scores">Scores</button>
+            <button id="btn-modes" class="btn" type="button" data-i18n="allModes">All modes</button>
             <button id="btn-signin" class="btn" type="button" hidden>Sign in with StarHermit</button>
             <button id="btn-invite" class="btn" type="button" hidden>Invite a friend</button>
           </div>
@@ -60,10 +61,10 @@
 
       <!-- Mode select -->
       <section id="screen-modes" class="screen" hidden aria-labelledby="modes-heading">
-        <h2 id="modes-heading" class="screen-heading">Choose a mode</h2>
+        <h2 id="modes-heading" class="screen-heading" data-i18n="chooseMode">Choose a mode</h2>
         <div id="mode-cards" class="card-grid"></div>
         <div class="screen-actions">
-          <button class="btn ghost" data-nav="title" type="button">Back</button>
+          <button class="btn ghost" data-nav="title" type="button" data-i18n="back">Back</button>
         </div>
       </section>
 
@@ -72,25 +73,25 @@
         <h2 id="setup-heading" class="screen-heading">Set up</h2>
         <div id="setup-body"></div>
         <div class="screen-actions">
-          <button class="btn ghost" data-nav="modes" type="button">Back</button>
+          <button class="btn ghost" data-nav="modes" type="button" data-i18n="back">Back</button>
         </div>
       </section>
 
       <!-- Game -->
-      <section id="screen-game" class="screen game" hidden aria-label="Playfield">
+      <section id="screen-game" class="screen game" hidden aria-label="Playfield" data-i18n-aria="playfield">
         <div id="game-layout">
-          <aside id="rail-left" class="rail" aria-label="Objective and progress">
-            <h3 class="rail-heading">Objective</h3>
+          <aside id="rail-left" class="rail" aria-label="Objective and progress" data-i18n-aria="railLeft">
+            <h3 class="rail-heading" data-i18n="objectiveH">Objective</h3>
             <p id="objective-text"></p>
             <div class="rail-block">
-              <div class="stat-row"><span>Cubes left</span><strong id="stat-left">–</strong></div>
-              <div class="stat-row"><span>Taps</span><strong id="stat-taps">0</strong></div>
-              <div class="stat-row"><span>Rotations</span><strong id="stat-rotations">0</strong></div>
-              <div class="stat-row" id="row-moves" hidden><span>Moves left</span><strong id="stat-moves">–</strong></div>
-              <div class="stat-row" id="row-time" hidden><span>Time left</span><strong id="stat-time">–</strong></div>
+              <div class="stat-row"><span data-i18n="cubesLeft">Cubes left</span><strong id="stat-left">–</strong></div>
+              <div class="stat-row"><span data-i18n="taps">Taps</span><strong id="stat-taps">0</strong></div>
+              <div class="stat-row"><span data-i18n="rotations">Rotations</span><strong id="stat-rotations">0</strong></div>
+              <div class="stat-row" id="row-moves" hidden><span data-i18n="movesLeft">Moves left</span><strong id="stat-moves">–</strong></div>
+              <div class="stat-row" id="row-time" hidden><span data-i18n="timeLeft">Time left</span><strong id="stat-time">–</strong></div>
             </div>
             <div class="rail-block">
-              <h4 class="rail-subheading">Score so far</h4>
+              <h4 class="rail-subheading" data-i18n="scoreSoFar">Score so far</h4>
               <div id="score-preview" class="score-preview"></div>
             </div>
             <p id="par-text" class="muted small"></p>
@@ -98,21 +99,21 @@
           </aside>
 
           <div id="playfield">
-            <canvas id="gl" aria-label="3D cube assembly. Use arrow keys to choose a cube and Enter to release it." tabindex="0" role="application"></canvas>
+            <canvas id="gl" aria-label="3D cube assembly. Use arrow keys to choose a cube and Enter to release it." data-i18n-aria="canvasAria" tabindex="0" role="application"></canvas>
             <div id="canvas-fallback" hidden>
               <div class="fallback-card">
-                <h3>3D is unavailable</h3>
-                <p>Your browser could not create a WebGL context. Your progress is safe. You can keep playing with the fully accessible board list.</p>
-                <button id="btn-accessible-mode" class="btn primary" type="button">Continue in accessible mode</button>
+                <h3 data-i18n="noglH">3D is unavailable</h3>
+                <p data-i18n="noglText">Your browser could not create a WebGL context. Your progress is safe. You can keep playing with the fully accessible board list.</p>
+                <button id="btn-accessible-mode" class="btn primary" type="button" data-i18n="accessibleMode">Continue in accessible mode</button>
               </div>
             </div>
             <div id="hud-top">
-              <button id="btn-drawer-left" class="btn ghost hud-btn drawer-only" type="button" aria-label="Open objective panel">Info</button>
+              <button id="btn-drawer-left" class="btn ghost hud-btn drawer-only" type="button" aria-label="Open objective panel" data-i18n-aria="openObjective" data-i18n="info">Info</button>
               <div id="hud-objective" class="hud-chip" role="status"></div>
               <div class="hud-spacer"></div>
               <div id="hud-clock" class="hud-chip" hidden></div>
-              <button id="btn-drawer-right" class="btn ghost hud-btn drawer-only" type="button" aria-label="Open actions panel">Tools</button>
-              <button id="btn-pause" class="btn ghost hud-btn" type="button" aria-label="Pause">II</button>
+              <button id="btn-drawer-right" class="btn ghost hud-btn drawer-only" type="button" aria-label="Open actions panel" data-i18n-aria="openActions" data-i18n="tools">Tools</button>
+              <button id="btn-pause" class="btn ghost hud-btn" type="button" aria-label="Pause" data-i18n-aria="pause">II</button>
             </div>
             <div id="countdown" hidden aria-hidden="true"></div>
             <div id="tutorial-banner" hidden>
@@ -121,28 +122,28 @@
             <div id="toast-region" aria-hidden="true"></div>
           </div>
 
-          <aside id="rail-right" class="rail" aria-label="Actions">
-            <h3 class="rail-heading">Actions</h3>
+          <aside id="rail-right" class="rail" aria-label="Actions" data-i18n-aria="actions">
+            <h3 class="rail-heading" data-i18n="actions">Actions</h3>
             <div class="action-stack">
-              <button id="btn-undo" class="btn" type="button">Undo</button>
-              <button id="btn-hint" class="btn" type="button">Hint</button>
-              <button id="btn-rot-left" class="btn" type="button" aria-label="Rotate left">⟲ Rotate</button>
-              <button id="btn-rot-right" class="btn" type="button" aria-label="Rotate right">Rotate ⟳</button>
-              <button id="btn-cam-reset" class="btn" type="button">Reset camera</button>
-              <button id="btn-board-list" class="btn" type="button">Board list</button>
+              <button id="btn-undo" class="btn" type="button" data-i18n="undo">Undo</button>
+              <button id="btn-hint" class="btn" type="button" data-i18n="hint">Hint</button>
+              <button id="btn-rot-left" class="btn" type="button" aria-label="Rotate left" data-i18n-aria="rotateLeft" data-i18n="rotLeftBtn">⟲ Rotate</button>
+              <button id="btn-rot-right" class="btn" type="button" aria-label="Rotate right" data-i18n-aria="rotateRight" data-i18n="rotRightBtn">Rotate ⟳</button>
+              <button id="btn-cam-reset" class="btn" type="button" data-i18n="resetCamera">Reset camera</button>
+              <button id="btn-board-list" class="btn" type="button" data-i18n="boardList">Board list</button>
             </div>
             <div class="rail-block">
-              <h4 class="rail-subheading">Selection</h4>
+              <h4 class="rail-subheading" data-i18n="selection">Selection</h4>
               <p id="selection-info" class="muted small">Nothing selected.</p>
             </div>
           </aside>
         </div>
-        <div id="tray-bottom" aria-label="Quick actions">
-          <button id="tray-undo" class="btn" type="button">Undo</button>
-          <button id="tray-hint" class="btn" type="button">Hint</button>
-          <button id="tray-rot-left" class="btn" type="button" aria-label="Rotate left">⟲</button>
-          <button id="tray-rot-right" class="btn" type="button" aria-label="Rotate right">⟳</button>
-          <button id="tray-pause" class="btn" type="button">Pause</button>
+        <div id="tray-bottom" aria-label="Quick actions" data-i18n-aria="quickActions">
+          <button id="tray-undo" class="btn" type="button" data-i18n="undo">Undo</button>
+          <button id="tray-hint" class="btn" type="button" data-i18n="hint">Hint</button>
+          <button id="tray-rot-left" class="btn" type="button" aria-label="Rotate left" data-i18n-aria="rotateLeft">⟲</button>
+          <button id="tray-rot-right" class="btn" type="button" aria-label="Rotate right" data-i18n-aria="rotateRight">⟳</button>
+          <button id="tray-pause" class="btn" type="button" data-i18n="pause">Pause</button>
         </div>
       </section>
 
@@ -153,35 +154,35 @@
           <p id="results-sub" class="muted"></p>
           <div id="results-stars" class="stars" aria-label="Stars"></div>
           <table id="results-table" class="score-table">
-            <caption class="sr-only">Score breakdown</caption>
+            <caption class="sr-only" data-i18n="scoreBreakdown">Score breakdown</caption>
             <tbody></tbody>
           </table>
           <div id="results-achievements"></div>
           <div id="results-comparison" class="muted"></div>
           <p id="results-lb" class="muted" aria-live="polite" hidden></p>
           <div class="screen-actions center">
-            <button id="btn-retry" class="btn" type="button">Retry</button>
+            <button id="btn-retry" class="btn" type="button" data-i18n="retry">Retry</button>
             <button id="btn-next" class="btn primary" type="button">Next</button>
-            <button id="btn-results-exit" class="btn ghost" type="button">Modes</button>
+            <button id="btn-results-exit" class="btn ghost" type="button" data-i18n="modes">Modes</button>
           </div>
         </div>
       </section>
 
       <!-- Scores / leaderboards -->
       <section id="screen-scores" class="screen" hidden aria-labelledby="scores-heading">
-        <h2 id="scores-heading" class="screen-heading">Scores</h2>
+        <h2 id="scores-heading" class="screen-heading" data-i18n="scores">Scores</h2>
         <div id="scores-body"></div>
         <div class="screen-actions">
-          <button class="btn ghost" data-nav="title" type="button">Back</button>
+          <button class="btn ghost" data-nav="title" type="button" data-i18n="back">Back</button>
         </div>
       </section>
 
       <!-- Help -->
       <section id="screen-help" class="screen" hidden aria-labelledby="help-heading">
-        <h2 id="help-heading" class="screen-heading">How to play</h2>
+        <h2 id="help-heading" class="screen-heading" data-i18n="howToPlay">How to play</h2>
         <div id="help-body"></div>
         <div class="screen-actions">
-          <button class="btn ghost" data-nav="title" type="button">Back</button>
+          <button class="btn ghost" data-nav="title" type="button" data-i18n="back">Back</button>
         </div>
       </section>
     </main>
@@ -189,13 +190,13 @@
     <!-- Pause overlay -->
     <div id="modal-pause" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pause-heading">
       <div class="modal-card">
-        <h2 id="pause-heading">Paused</h2>
+        <h2 id="pause-heading" data-i18n="paused">Paused</h2>
         <div class="action-stack">
-          <button id="btn-resume" class="btn primary" type="button">Resume</button>
-          <button id="btn-pause-settings" class="btn" type="button">Settings</button>
-          <button id="btn-pause-help" class="btn" type="button">Help</button>
-          <button id="btn-restart-round" class="btn" type="button">Restart round</button>
-          <button id="btn-leave-round" class="btn danger" type="button">Leave round</button>
+          <button id="btn-resume" class="btn primary" type="button" data-i18n="resume">Resume</button>
+          <button id="btn-pause-settings" class="btn" type="button" data-i18n="settings">Settings</button>
+          <button id="btn-pause-help" class="btn" type="button" data-i18n="help">Help</button>
+          <button id="btn-restart-round" class="btn" type="button" data-i18n="restartRound">Restart round</button>
+          <button id="btn-leave-round" class="btn danger" type="button" data-i18n="leaveRound">Leave round</button>
         </div>
       </div>
     </div>
@@ -203,10 +204,10 @@
     <!-- Settings overlay -->
     <div id="modal-settings" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="settings-heading">
       <div class="modal-card wide">
-        <h2 id="settings-heading">Settings</h2>
-        <div id="settings-body"></div>
+        <h2 id="settings-heading" data-i18n="settings">Settings</h2>
+        <div id="settings-body" data-options-graphics><div id="settings-own"></div></div>
         <div class="screen-actions center">
-          <button id="btn-settings-close" class="btn primary" type="button">Done</button>
+          <button id="btn-settings-close" class="btn primary" type="button" data-i18n="done">Done</button>
         </div>
       </div>
     </div>
@@ -214,11 +215,11 @@
     <!-- Accessible board mirror -->
     <div id="modal-board" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="board-heading">
       <div class="modal-card wide">
-        <h2 id="board-heading">Board list</h2>
-        <p class="muted small">Every remaining cube, its direction and its state. Activate a clear cube to release it.</p>
+        <h2 id="board-heading" data-i18n="boardList">Board list</h2>
+        <p class="muted small" data-i18n="boardListText">Every remaining cube, its direction and its state. Activate a clear cube to release it.</p>
         <ul id="board-list" class="board-list"></ul>
         <div class="screen-actions center">
-          <button id="btn-board-close" class="btn primary" type="button">Close</button>
+          <button id="btn-board-close" class="btn primary" type="button" data-i18n="close">Close</button>
         </div>
       </div>
     </div>
@@ -226,10 +227,10 @@
     <!-- Profile overlay -->
     <div id="modal-profile" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="profile-heading">
       <div class="modal-card">
-        <h2 id="profile-heading">Profile</h2>
+        <h2 id="profile-heading" data-i18n="profile">Profile</h2>
         <div id="profile-body"></div>
         <div class="screen-actions center">
-          <button id="btn-profile-close" class="btn primary" type="button">Done</button>
+          <button id="btn-profile-close" class="btn primary" type="button" data-i18n="done">Done</button>
         </div>
       </div>
     </div>

@@ -6,8 +6,9 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/run-tests.js && node --test tests/platform.test.js",
-    "smoke": "node tests/smoke.mjs",
+    "test": "node tests/run-tests.js && node --test tests/platform.test.js tests/i18n.test.js",
+    "test:e2e": "node tests/e2e.mjs",
+    "smoke": "node tests/e2e.mjs",
     "captures": "node tests/captures.mjs"
   },
   "engines": {

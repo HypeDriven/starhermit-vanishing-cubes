@@ -4,7 +4,7 @@
 // Every transition has one owner and an explicit reason. Rules state changes
 // only through GameSession commands; rendering consumes snapshots.
 
-import { legalActions, explainRelease, remainingArrows, DIR_NAMES } from './rules/engine.js';
+import { legalActions, explainRelease, remainingArrows } from './rules/engine.js';
 import { generateLevel } from './rules/generator.js';
 import { LEVEL_DEFS, PRACTICE_DEFS, dailyDef } from './content/levels.js';
 import { LESSONS, lessonById } from './content/tutorials.js';
@@ -29,6 +29,9 @@ import {
 } from './ui/a11y.js';
 import { matchKey, GAMEPAD_BUTTONS, defaultCodes } from './ui/bindings.js';
 import { platformStrings } from './ui/platform-strings.js';
+import { t, tn, hasKey, locale, onLanguage, levelName, lessonStep, refusalText, dirName } from './ui/i18n.js';
+import { mergeProgression, mergeAchievements, mergeBoards } from './session/merge.js';
+import { currentScreen } from './ui/screens.js';
 
 const BUILD = '1.0.0';
 const $ = (id) => document.getElementById(id);
@@ -113,8 +116,10 @@ function saveAchievements() {
   platform.scheduleCloudSave();
 }
 
-// Remote-preferred merge of a cloud snapshot. A remote doc with rev >= the
-// local one wins; localStorage remains the offline cache either way.
+// Fold a cloud snapshot into the local docs. Progress docs (progression,
+// achievements, personal-record boards) are merged so neither device loses
+// anything; settings and profile take the newer revision. localStorage
+// remains the offline cache. Returns true when anything changed locally.
 const DOC_LIVE = {
   settings: () => settings,
   progression: () => progression,
@@ -128,15 +133,32 @@ const DOC_DEFAULTS = {
   achievements: {},
 };
 
+const DOC_MERGE = {
+  progression: (remote, live) => mergeProgression(deepMerge(structuredClone(DEFAULT_PROGRESSION), remote || {}), live),
+  achievements: (remote, live) => mergeAchievements(remote || {}, live),
+};
+
+let cloudNeedsWrite = false;
 function applyRemoteDocs(remote) {
   let changed = false;
   for (const [name, doc] of Object.entries(remote.docs || {})) {
     if (name === 'boards') {
-      platform.applyRemoteBoards(doc);
+      if (platform.applyRemoteBoards(doc, mergeBoards)) cloudNeedsWrite = true;
       continue;
     }
     const live = DOC_LIVE[name] ? DOC_LIVE[name]() : null;
     if (!live || !doc || typeof doc !== 'object') continue;
+    if (DOC_MERGE[name]) {
+      const merged = DOC_MERGE[name](doc.payload, structuredClone(live));
+      const fromRemote = JSON.stringify(merged) !== JSON.stringify(live);
+      if (JSON.stringify(merged) !== JSON.stringify(doc.payload)) cloudNeedsWrite = true;
+      if (!fromRemote && (doc.rev || 0) <= docs[name].rev) continue;
+      for (const k of Object.keys(live)) delete live[k];
+      Object.assign(live, merged);
+      docs[name].rev = saveDoc(name, live, Math.max(doc.rev || 0, docs[name].rev));
+      changed = true;
+      continue;
+    }
     if (doc.rev < docs[name].rev) continue;
     if (doc.rev === docs[name].rev && JSON.stringify(doc.payload ?? null) === JSON.stringify(live)) continue;
     const merged = deepMerge(structuredClone(DOC_DEFAULTS[name]), doc.payload || {});
@@ -199,10 +221,10 @@ function getJourneyLevel(index) {
 
 function levelSummary(level) {
   const arrows = level.cubes.filter((c) => c.kind === 'arrow').length;
-  const bits = [`${arrows} cubes`];
-  if (level.mechanics.includes('stone')) bits.push('stones');
-  if (level.mechanics.includes('lock')) bits.push('locks');
-  if (level.mechanics.includes('core')) bits.push('a core');
+  const bits = [t('sumCubes', { n: arrows })];
+  if (level.mechanics.includes('stone')) bits.push(t('sumStones'));
+  if (level.mechanics.includes('lock')) bits.push(t('sumLocks'));
+  if (level.mechanics.includes('core')) bits.push(t('sumCore'));
   return bits.join(' · ');
 }
 
@@ -253,10 +275,10 @@ function applyGfxDom() {
 }
 
 function graphicsCtx() {
-  const t = gfxStrings();
+  const g = gfxStrings(locale());
   return {
     detected: app.scene ? app.scene.detected : gfxResolved().preset,
-    info: app.scene ? app.scene.graphicsInfo(t.words) : null,
+    info: app.scene ? app.scene.graphicsInfo(g.words) : null,
   };
 }
 
@@ -381,10 +403,9 @@ function activateRound() {
   transition('active', 'countdown done', 'controller');
   audio.play('round-start');
   showScreen('game');
-  announce(
-    `${app.level.name}. ${remainingArrows(app.session.state)} cubes to release. ` +
-    `${legalActions(app.session.state).length} paths are currently clear.`,
-  );
+  announce(t('announceStart', {
+    name: levelName(app.level), n: remainingArrows(app.session.state), m: legalActions(app.session.state).length,
+  }));
   if (app.scene) app.scene.start();
   if (app.clockTimer) clearInterval(app.clockTimer);
   app.clockTimer = setInterval(() => {
@@ -413,7 +434,7 @@ function onSessionEvents(events, state) {
         const left = remainingArrows(state);
         const movesLeft = state.limits.moves == null ? null : state.limits.moves - state.stats.taps;
         if (movesLeft === 3) audio.play('move-limit');
-        announce(`Cube released. ${left} left.`);
+        announce(t('announceReleased', { n: left }));
         audio.setMusicIntensity(0.3 + 0.7 * (state.stats.released / (state.stats.released + left || 1)));
         if (!settings.accessibility.hapticsOff && navigator.vibrate) navigator.vibrate(8);
         // The released cube is gone — drop a stale selection so a repeated
@@ -424,11 +445,11 @@ function onSessionEvents(events, state) {
       }
       case 'invalid':
         audio.play('invalid');
-        toast(ev.message || 'That cube cannot leave yet.');
+        toast(refusalText(ev) || t('cannotLeave'));
         break;
       case 'unlock':
         audio.play('unlock');
-        toast(`Lock on ${ev.cubeId} opened.`);
+        toast(t('lockOpened', { id: ev.cubeId }));
         break;
       case 'rotate':
         audio.play('rotate');
@@ -440,7 +461,7 @@ function onSessionEvents(events, state) {
         audio.play('failed');
         break;
       case 'undo':
-        announce('Undone.');
+        announce(t('undone'));
         break;
     }
     checkTutorialEvent(ev, state);
@@ -464,7 +485,7 @@ function onSessionEvents(events, state) {
 function showTutorialStep() {
   const step = app.lesson.steps[app.tutorialStep];
   if (!step) return;
-  $('tutorial-text').textContent = step.text;
+  $('tutorial-text').textContent = lessonStep(app.lesson.id, app.tutorialStep, step.text);
   if (step.focus) {
     selectCube(step.focus);
   }
@@ -579,7 +600,7 @@ async function finishRound() {
   for (const ach of freshAchievements) {
     achievementsUnlocked[ach.key] = Date.now();
     audio.play('achievement');
-    toast(`Achievement: ${ach.name}`);
+    toast(t('achievementToast', { name: tn('achievements', ach.key, [ach.name])[0] }));
   }
   if (freshAchievements.length) saveAchievements();
 
@@ -612,31 +633,35 @@ async function finishRound() {
     app.mode === 'learn' && completed
       ? LESSONS[LESSONS.findIndex((l) => l.id === app.lesson.id) + 1]?.id
       : null;
+  // String keys (renderResults localizes them).
   const nextLabel =
     app.mode === 'journey' && completed && app.params.levelIndex + 1 < LEVEL_DEFS.length
-      ? 'Next stage'
+      ? 'nextStage'
       : nextLessonId
-        ? 'Next lesson'
+        ? 'nextLesson'
         : app.mode === 'practice'
-          ? 'Play again'
-          : 'Modes';
+          ? 'playAgain'
+          : 'modes';
 
   // Signed in: Daily and Challenge rounds post their score to the platform
   // high-score board; the results card shows the player's rank.
   const lbLine = $('results-lb');
+  app.lbState = null;
   if (lbLine) {
     lbLine.hidden = !(app.session.ranked && platform.hosted);
-    lbLine.textContent = lbLine.hidden ? '' : pt('lbPosting');
+    if (!lbLine.hidden) app.lbState = { key: 'lbPosting' };
+    renderLbLine();
     if (!lbLine.hidden) {
       const session = app.session;
       platform.postScore(result.score).then((r) => {
         if (app.session !== session) return;
-        lbLine.textContent = !r.posted ? pt('lbNotPosted') : r.rank ? pt('lbRank', { rank: r.rank }) : pt('lbPosted');
+        app.lbState = !r.posted ? { key: 'lbNotPosted' } : r.rank ? { key: 'lbRank', vars: { rank: r.rank } } : { key: 'lbPosted' };
+        renderLbLine();
       });
     }
   }
 
-  renderResults(null, {
+  app.lastResults = {
     result,
     level: app.level,
     mode: app.mode,
@@ -644,7 +669,8 @@ async function finishRound() {
     rankInfo,
     previousBest: prevBest,
     nextLabel,
-  });
+  };
+  renderResults(null, app.lastResults);
   if (completed) {
     audio.play('level-win');
     if (result.stars > 0) audio.play('star-' + result.stars);
@@ -658,10 +684,12 @@ async function finishRound() {
   transition('results', 'results shown', 'controller');
   showScreen('results');
   if (app.scene) app.scene.stop(); // nothing visible to render behind results
-  announce(
-    `${completed ? 'Board cleared' : 'Round over'}. Score ${result.score}, ${result.stars} stars.`,
-    true,
-  );
+  announce(t('announceResult', { head: completed ? t('boardCleared') : t('headOver'), score: result.score, stars: result.stars }), true);
+}
+
+function renderLbLine() {
+  const lbLine = $('results-lb');
+  if (lbLine) lbLine.textContent = app.lbState ? pt(app.lbState.key, app.lbState.vars) : '';
 }
 
 function boardForCurrent() {
@@ -700,13 +728,13 @@ function refreshHUD() {
 
 function selectionText() {
   const id = app.selectedCubeId || app.hoveredCubeId;
-  if (!id || !app.session) return 'Nothing selected.';
+  if (!id || !app.session) return t('nothingSelected');
   const cube = app.session.state.cubes.find((c) => c.id === id);
-  if (!cube) return 'Nothing selected.';
+  if (!cube) return t('nothingSelected');
   const ex = explainRelease(app.session.state, id);
-  const dir = DIR_NAMES[cube.dir];
-  if (ex.ok) return `Cube ${id}, facing ${dir} — path clear.`;
-  return `Cube ${id}, facing ${dir} — ${ex.message}`;
+  const dir = dirName(cube.dir);
+  if (ex.ok) return t('selClear', { id, dir });
+  return t('selBlocked', { id, dir, reason: refusalText(ex) });
 }
 
 function refreshBoardMirror() {
@@ -726,7 +754,7 @@ function selectCube(cubeId) {
   setSelectionInfo(selectionText());
   if (cubeId) {
     const ex = explainRelease(app.session.state, cubeId);
-    announce(`Selected cube ${cubeId}. ${ex.ok ? 'Path is clear.' : ex.message}`);
+    announce(t('selAnnounce', { id: cubeId, status: ex.ok ? t('pathClear') : refusalText(ex) }));
   }
 }
 
@@ -735,7 +763,7 @@ function cycleSelection(dirSign) {
   const acts = legalActions(app.session.state).map((a) => a.cubeId).sort();
   if (!acts.length) {
     audio.play('error');
-    announce('No clear paths right now.');
+    announce(t('noClearPaths'));
     return;
   }
   const current = acts.indexOf(app.selectedCubeId);
@@ -776,7 +804,7 @@ function doHint() {
   if (hint) {
     selectCube(hint.cubeId);
     audio.play('hint');
-    toast(`Hint: cube ${hint.cubeId} has a clear path.`);
+    toast(t('hintToast', { id: hint.cubeId }));
   } else {
     audio.play('error');
   }
@@ -828,19 +856,24 @@ function openTitle() {
   showScreen('title');
   audio.play('menu-open');
   if (app.scene) app.scene.stop();
+  renderTitleText();
+}
+
+function renderTitleText() {
   const stars = totalStars();
   const done = Object.keys(progression.journeyStars).length;
   $('title-progress').textContent = done
-    ? `${done}/40 journey stages · ${stars} stars · daily streak ${dailyStreak()}`
-    : 'A floating sculpture of cubes awaits.';
+    ? t('titleProgress', { done, stars, streak: dailyStreak() })
+    : t('titleEmpty');
   const snap = localStorage.getItem('vc.snapshot');
-  $('btn-play').textContent = snap ? 'Resume' : 'Play';
+  $('btn-play').dataset.resume = snap ? '1' : '';
+  $('btn-play').textContent = snap ? t('resume') : t('play');
   renderPlatformButtons();
 }
 
 // ---------- StarHermit: sign-in / invite ----------
 
-const pt = platformStrings();
+let pt = platformStrings(locale());
 function renderPlatformButtons() {
   $('btn-signin').textContent = pt('signIn');
   $('btn-invite').textContent = pt('invite');
@@ -863,6 +896,10 @@ function openModeSelect() {
   transition('mode-select', 'choose mode', 'controller');
   showScreen('modes');
   if (app.scene) app.scene.stop();
+  renderModeCards();
+}
+
+function renderModeCards() {
   buildModeCards($('mode-cards'), {
     progression,
     dailyKey: platform.utcDateKey(),
@@ -880,14 +917,12 @@ function openModeSelect() {
 function openSetup(mode) {
   transition('setup', 'setup ' + mode, 'controller');
   showScreen('setup');
-  const headings = {
-    learn: 'Learn — lessons',
-    journey: 'Journey — stages',
-    daily: 'Daily challenge',
-    practice: 'Practice',
-    challenge: 'Challenge',
-  };
-  $('setup-heading').textContent = headings[mode] || 'Set up';
+  renderSetup(mode);
+}
+
+function renderSetup(mode) {
+  app.setupMode = mode;
+  $('setup-heading').textContent = t('setupH_' + mode);
   const levelMetas = LEVEL_DEFS.map((def, i) => ({
     id: def.id,
     name: def.name,
@@ -904,6 +939,7 @@ function openSetup(mode) {
     progression,
     levelMetas,
     dailyMeta: {
+      id: dailyLevel.id,
       name: dailyLevel.name,
       seedLabel: dateKey,
       summary: levelSummary(dailyLevel),
@@ -921,9 +957,13 @@ function openScores() {
   transition('mode-select', 'scores', 'controller');
   showScreen('scores');
   if (app.scene) app.scene.stop();
+  renderScoresScreen();
+}
+
+function renderScoresScreen() {
   const boards = [
-    { id: 'daily-' + platform.utcDateKey(), name: 'Daily — ' + platform.utcDateKey() },
-    ...CHALLENGES.map((c) => ({ id: 'challenge-' + c.id, name: c.name })),
+    { id: 'daily-' + platform.utcDateKey(), name: t('dailyName', { date: platform.utcDateKey() }) },
+    ...CHALLENGES.map((c) => ({ id: 'challenge-' + c.id, name: tn('challenges', c.id, c.name) })),
   ];
   renderScores($('scores-body'), { platform, boards, progression });
 }
@@ -933,25 +973,72 @@ function openHelp() {
   renderHelp($('help-body'), settings);
 }
 
-function openSettings() {
-  buildSettings($('settings-body'), settings, {
+// The game's own settings redraw inside #settings-own; the shared Sound /
+// Language / Report sections (game-options.js) mount after it inside
+// #settings-body and are never rebuilt by the game.
+function renderSettingsOwn() {
+  buildSettings($('settings-own'), settings, {
     totalStars: totalStars(),
     theme: progression.theme,
     gfx: graphicsCtx(),
   }, onSettingChange);
+}
+
+function openSettings() {
+  renderSettingsOwn();
   openModal($('modal-settings'));
 }
 
-function openProfile() {
+function renderProfileBody() {
   buildProfile($('profile-body'), profile, progression, {
     hosted: platform.hosted,
     dailyStreak: dailyStreak(),
   }, (name) => {
     profile.name = name;
     saveProfile();
-    toast('Display name saved.');
+    toast(t('nameSaved'));
   });
+}
+
+function openProfile() {
+  renderProfileBody();
   openModal($('modal-profile'));
+}
+
+/**
+ * The game language changed (Settings → Language, or the account preference
+ * arrived): markup was re-applied; re-render the visible screen, HUD, board
+ * mirror, tutorial and open dialogs in place. The round keeps running.
+ */
+function relocalize() {
+  pt = platformStrings(locale());
+  $('net-status').textContent = platform.statusText();
+  renderPlatformButtons();
+  const screen = currentScreen();
+  if (screen === 'title') renderTitleText();
+  else if (screen === 'modes') renderModeCards();
+  else if (screen === 'setup' && app.setupMode) renderSetup(app.setupMode);
+  else if (screen === 'scores') renderScoresScreen();
+  else if (screen === 'help') renderHelp($('help-body'), settings);
+  else if (screen === 'results' && app.lastResults) {
+    renderResults(null, app.lastResults);
+    renderLbLine();
+  }
+  if (app.session && !app.session.finished) {
+    refreshHUD();
+    refreshBoardMirror();
+    setSelectionInfo(selectionText());
+    if (app.mode === 'learn' && app.lesson && app.lesson.steps[app.tutorialStep]) {
+      $('tutorial-text').textContent = lessonStep(app.lesson.id, app.tutorialStep, app.lesson.steps[app.tutorialStep].text);
+    }
+  }
+  if (!$('modal-settings').hidden) {
+    const card = $('settings-body').parentElement;
+    const top = card.scrollTop;
+    renderSettingsOwn();
+    card.scrollTop = top;
+  }
+  if (!$('modal-profile').hidden) renderProfileBody();
 }
 
 function onSettingChange(key, value) {
@@ -989,11 +1076,13 @@ function onSettingChange(key, value) {
   if (key !== 'theme' && key !== 'replay-tutorial') {
     // Rebuild the form so dependent controls (e.g. rebinding labels) refresh,
     // keeping keyboard focus on the control that was just changed.
-    const body = $('settings-body');
+    // Only the game's own box redraws; the shared sections stay mounted.
+    const body = $('settings-own');
+    const card = $('settings-body').parentElement;
     const focusId = body.contains(document.activeElement) ? document.activeElement.id : '';
-    const scrollTop = body.parentElement.scrollTop;
-    buildSettings(body, settings, { totalStars: totalStars(), theme: progression.theme, gfx: graphicsCtx() }, onSettingChange);
-    body.parentElement.scrollTop = scrollTop;
+    const scrollTop = card.scrollTop;
+    renderSettingsOwn();
+    card.scrollTop = scrollTop;
     if (focusId) $(focusId)?.focus();
   }
 }
@@ -1001,13 +1090,19 @@ function onSettingChange(key, value) {
 function applySettingsNow() {
   applyA11yClasses(settings);
   audio.applySettings(settings);
-  audio.onCaption = settings.audio.captions ? (text) => toast('♪ ' + text, { ms: 1200 }) : null;
+  audio.onCaption = settings.audio.captions ? captionToast : null;
   if (app.scene) {
     app.scene.setGraphics(gfxSaved());
     app.scene.setReducedMotion(settings.accessibility.reducedMotion);
     applyThemeNow();
   }
   applyGfxDom();
+}
+
+// Sound captions arrive as (English text, cue key); show the localized cue.
+function captionToast(text, key) {
+  const k = 'cap_' + String(key || '').replace(/-/g, '_');
+  toast('♪ ' + (hasKey(k) ? t(k) : text), { ms: 1200 });
 }
 
 function applyThemeNow() {
@@ -1110,7 +1205,7 @@ function handleTap(x, y) {
   } else {
     if (settings.accessibility.dragToggle) {
       app.dragMode = !app.dragMode;
-      toast(app.dragMode ? 'Camera grab on — move to rotate, tap to release.' : 'Camera grab off.');
+      toast(app.dragMode ? t('grabOn') : t('grabOff'));
     } else {
       selectCube(null);
     }
@@ -1239,7 +1334,7 @@ function wireButtons() {
   $('btn-play').addEventListener('click', () => {
     audio.play('ui');
     const snap = localStorage.getItem('vc.snapshot');
-    if (snap && $('btn-play').textContent === 'Resume') {
+    if (snap && $('btn-play').dataset.resume === '1') {
       resumeSnapshot(snap);
       return;
     }
@@ -1394,7 +1489,7 @@ function resumeSnapshot(snapJson) {
       app.scene.resize();
       app.scene.start();
     }
-    toast('Round resumed from your last safe snapshot.');
+    toast(t('snapshotResumed'));
     platform.activityStart(data.params.mode); // keep activity start/end paired
     // A previous round's interval may still be live (e.g. title was reached
     // via Help while paused) — never run two clock drivers for one session.
@@ -1426,7 +1521,7 @@ function wireLifecycle() {
         const away = Date.now() - app.hiddenAt;
         app.hiddenAt = null;
         if (app.state === 'paused' && away > 5000) {
-          toast(`Paused while you were away (${formatMs(away)}).`);
+          toast(t('pausedAway', { time: formatMs(away) }));
         }
       }
     }
@@ -1474,6 +1569,7 @@ function frameHook() {
 async function boot() {
   transition('boot', 'start', 'boot');
   applyA11yClasses(settings);
+  onLanguage(relocalize);
 
   // Capability detection.
   let gl = null;
@@ -1489,6 +1585,19 @@ async function boot() {
     // (GET /api/v1/users/{sub}/profile — never /api/v1/me).
     const remote = await platform.loadCloudSave();
     if (remote && applyRemoteDocs(remote)) applyA11yClasses(settings);
+    // This device had progress the cloud copy lacked: write the merge back.
+    if (remote && cloudNeedsWrite) platform.scheduleCloudSave();
+    // Another device saved since our load (conditional write refused):
+    // reload, merge both sides and save again.
+    platform.onConflict = async () => {
+      const latest = await platform.loadCloudSave();
+      cloudNeedsWrite = false;
+      if (latest && applyRemoteDocs(latest)) {
+        applySettingsNow();
+        if (app.state === 'title') renderTitleText();
+      }
+      platform.scheduleCloudSave();
+    };
     const nickname = await platform.loadProfile();
     if (nickname) {
       profile.name = nickname;
@@ -1533,7 +1642,7 @@ async function boot() {
   const unlockAudio = () => {
     audio.ensure();
     audio.applySettings(settings);
-    audio.onCaption = settings.audio.captions ? (text) => toast('♪ ' + text, { ms: 1200 }) : null;
+    audio.onCaption = settings.audio.captions ? captionToast : null;
     audio.resume();
     audio.startMusic('title');
     audio.startAmbience();
@@ -1559,7 +1668,7 @@ async function boot() {
   applyGfxDom();
   if (!app.webgl) {
     $('canvas-fallback').hidden = false;
-    toast('WebGL unavailable — accessible mode is available from the game screen.', { ms: 5000 });
+    toast(t('noWebglToast'), { ms: 5000 });
   }
 
   wireButtons();
