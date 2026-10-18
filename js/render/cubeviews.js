@@ -11,7 +11,12 @@ const MAX_ARROWS = 168; // 150 live cubes max + in-flight flyout ghosts
 const MAX_STONES = 60;
 const MAX_PATH_DOTS = 16;
 
-function roundedBoxGeometry(size = 0.92, radius = 0.14, smooth = false) {
+// Default asset budget (the High preset) when the scene passes none.
+const DEFAULT_BUDGET = { material: 'physical', bevel: [4, 6], texture: 256 };
+
+// `bevel` = [bevelSegments, curveSegments] from the preset's budget (cube LOD); plain detail never
+// exceeds the original flat-tier [2, 4].
+function roundedBoxGeometry(size = 0.92, radius = 0.14, smooth = false, bevel = [5, 8]) {
   const s = size - radius * 2;
   const shape = new THREE.Shape();
   const h = s / 2;
@@ -29,17 +34,20 @@ function roundedBoxGeometry(size = 0.92, radius = 0.14, smooth = false) {
     bevelEnabled: true,
     bevelThickness: radius,
     bevelSize: radius,
-    bevelSegments: smooth ? 5 : 2,
-    curveSegments: smooth ? 8 : 4,
+    bevelSegments: smooth ? bevel[0] : Math.min(2, bevel[0]),
+    curveSegments: smooth ? bevel[1] : Math.min(4, bevel[1]),
   });
   geo.center();
   geo.computeVertexNormals();
   return geo;
 }
 
-function panelTexture({ base = '#f6f8fa', frame = 'rgba(30,45,70,0.35)', speckle = 0, grain = 0 }) {
-  const size = grain > 0 ? 256 : 128;
+// Panel texture drawn in 128-unit space at the budget's size (`px`; plain detail ≤ 128 px). Grain
+// counts are authored for 256 px and scale with the texture area so the density stays the same.
+function panelTexture({ base = '#f6f8fa', frame = 'rgba(30,45,70,0.35)', speckle = 0, grain = 0, px = 256 }) {
+  const size = grain > 0 ? px : Math.min(128, px);
   const k = size / 128;
+  grain = Math.round(grain * (size / 256) ** 2);
   const c = document.createElement('canvas');
   c.width = c.height = size;
   const g = c.getContext('2d');
@@ -94,6 +102,7 @@ export class CubeViews {
   constructor(scene, theme, gfx = {}) {
     this.scene = scene;
     this.gfx = { detail: 'detailed', reflections: 'on', ...gfx };
+    this.gfx.budget = { ...DEFAULT_BUDGET, ...(gfx.budget || {}) };
     this.group = new THREE.Group();
     this.group.name = 'board';
     scene.add(this.group);
@@ -111,17 +120,8 @@ export class CubeViews {
 
   _buildMeshes() {
     const t = this.theme.cube;
-    this.arrowGeo = roundedBoxGeometry(0.92, 0.14, this.gfx.detail === 'detailed');
-    const detailed = this.gfx.detail === 'detailed';
-    // Glazed ceramic: a clear coat over a satin base catches the environment
-    // when reflections are on, so the silhouettes read crisply against the sky.
-    this.arrowMat = new THREE.MeshPhysicalMaterial({
-      map: panelTexture({ base: '#f6f8fa', grain: detailed ? 1400 : 0 }),
-      roughness: 0.5,
-      metalness: 0.0,
-      clearcoat: 0,
-      clearcoatRoughness: 0.28,
-    });
+    this.arrowGeo = this._cubeGeometry();
+    this._makeMaterials();
     this.arrowMesh = new THREE.InstancedMesh(this.arrowGeo, this.arrowMat, MAX_ARROWS);
     this.arrowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.arrowMesh.castShadow = true;
@@ -130,11 +130,6 @@ export class CubeViews {
     this.arrowMesh.count = 0;
     this.arrowSlots = [];
 
-    this.stoneMat = new THREE.MeshStandardMaterial({
-      map: panelTexture({ base: '#9aa0a8', frame: 'rgba(0,0,0,0.4)', speckle: 60, grain: detailed ? 3200 : 0 }),
-      roughness: 0.9,
-      metalness: 0.0,
-    });
     this.stoneMesh = new THREE.InstancedMesh(this.arrowGeo, this.stoneMat, MAX_STONES);
     this.stoneMesh.castShadow = true;
     this.stoneMesh.receiveShadow = true;
@@ -142,15 +137,6 @@ export class CubeViews {
     this.stoneMesh.count = 0;
     this.stoneSlots = [];
 
-    this.coreMat = new THREE.MeshPhysicalMaterial({
-      color: t.core,
-      emissive: t.core,
-      emissiveIntensity: 0.55,
-      roughness: 0.3,
-      metalness: 0.2,
-      clearcoat: 0,
-      clearcoatRoughness: 0.15,
-    });
     this.coreMesh = new THREE.InstancedMesh(this.arrowGeo, this.coreMat, 8);
     this.coreMesh.castShadow = true;
     this.coreMesh.userData.pickKind = 'core';
@@ -161,7 +147,6 @@ export class CubeViews {
     // the face the cube exits through — direction is shape, not color.
     const chevGeo = new THREE.ConeGeometry(0.2, 0.3, 4);
     chevGeo.rotateY(Math.PI / 4);
-    this.chevMat = new THREE.MeshPhysicalMaterial({ color: t.chevron, roughness: 0.45, metalness: 0.1, clearcoat: 0, clearcoatRoughness: 0.2 });
     this.chevMesh = new THREE.InstancedMesh(chevGeo, this.chevMat, MAX_ARROWS);
     this.chevMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.chevMesh.count = 0;
@@ -169,11 +154,6 @@ export class CubeViews {
 
     // Lock bands: thin slabs wrapping locked cubes, perpendicular to travel.
     const bandGeo = new THREE.BoxGeometry(1.1, 0.16, 1.1);
-    this.bandMat = new THREE.MeshStandardMaterial({
-      color: 0x3a3f47,
-      roughness: 0.4,
-      metalness: 0.6,
-    });
     this.bandMesh = new THREE.InstancedMesh(bandGeo, this.bandMat, 40);
     this.bandMesh.count = 0;
     this.bandMesh.raycast = () => {};
@@ -212,34 +192,76 @@ export class CubeViews {
     );
   }
 
-  /** Live graphics toggles: clear coat with reflections, surface grain with detail. */
+  _cubeGeometry() {
+    return roundedBoxGeometry(0.92, 0.14, this.gfx.detail === 'detailed', this.gfx.budget.bevel);
+  }
+
+  /*
+   * Cube, chevron and lock-band materials for the preset's budget: Lambert on Low (no PBR terms),
+   * Standard on Balanced, glazed clear-coat Physical on High/Ultra (clear coat only with Reflections on).
+   * Panel textures at the budget's size; surface grain only with Surface detail on.
+   */
+  _makeMaterials() {
+    const t = this.theme.cube, kind = this.gfx.budget.material, px = this.gfx.budget.texture;
+    const detailed = this.gfx.detail === 'detailed';
+    const mat = (params, glossy) => {
+      if (kind === 'lambert') {
+        const { roughness, metalness, clearcoat, clearcoatRoughness, ...rest } = params;
+        return new THREE.MeshLambertMaterial(rest);
+      }
+      if (kind === 'physical' && glossy) return new THREE.MeshPhysicalMaterial(params);
+      const { clearcoat, clearcoatRoughness, ...rest } = params;
+      return new THREE.MeshStandardMaterial(rest);
+    };
+    for (const m of [this.arrowMat, this.stoneMat]) { m?.map?.dispose(); m?.dispose(); }
+    for (const m of [this.coreMat, this.chevMat, this.bandMat]) m?.dispose();
+    this.arrowMat = mat({
+      map: panelTexture({ base: '#f6f8fa', grain: detailed ? 1400 : 0, px }),
+      roughness: 0.5, metalness: 0.0, clearcoat: 0, clearcoatRoughness: 0.28,
+    }, true);
+    this.stoneMat = mat({
+      map: panelTexture({ base: '#9aa0a8', frame: 'rgba(0,0,0,0.4)', speckle: 60, grain: detailed ? 3200 : 0, px }),
+      roughness: 0.9, metalness: 0.0,
+    }, false);
+    this.coreMat = mat({
+      color: t.core, emissive: t.core, emissiveIntensity: 0.55 * (this._coreGlow || 1),
+      roughness: 0.3, metalness: 0.2, clearcoat: 0, clearcoatRoughness: 0.15,
+    }, true);
+    this.chevMat = mat({ color: t.chevron, roughness: 0.45, metalness: 0.1, clearcoat: 0, clearcoatRoughness: 0.2 }, true);
+    this.bandMat = mat({ color: 0x3a3f47, roughness: 0.4, metalness: 0.6 }, false);
+    if (this.arrowMesh) {
+      this.arrowMesh.material = this.arrowMat;
+      this.stoneMesh.material = this.stoneMat;
+      this.coreMesh.material = this.coreMat;
+      this.chevMesh.material = this.chevMat;
+      this.bandMesh.material = this.bandMat;
+    }
+  }
+
+  /** Live graphics toggles: clear coat with reflections, surface grain with detail, the preset's asset budget. */
   applyGfx(gfx) {
     const prev = this.gfx;
-    this.gfx = { ...this.gfx, ...gfx };
-    const coat = this.gfx.reflections === 'on';
-    this.arrowMat.clearcoat = coat ? 0.65 : 0;
-    this.arrowMat.roughness = coat ? 0.42 : 0.55;
-    this.chevMat.clearcoat = coat ? 0.8 : 0;
-    this.coreMat.clearcoat = coat ? 1 : 0;
-    if (prev.detail !== this.gfx.detail || !this._gfxApplied) {
-      const detailed = this.gfx.detail === 'detailed';
-      if (this._gfxApplied) {
-        const old = this.arrowGeo;
-        this.arrowGeo = roundedBoxGeometry(0.92, 0.14, detailed);
-        for (const m of [this.arrowMesh, this.stoneMesh, this.coreMesh]) m.geometry = this.arrowGeo;
-        old.dispose();
-        this.arrowMat.map.dispose();
-        this.arrowMat.map = panelTexture({ base: '#f6f8fa', grain: detailed ? 1400 : 0 });
-        this.stoneMat.map.dispose();
-        this.stoneMat.map = panelTexture({ base: '#9aa0a8', frame: 'rgba(0,0,0,0.4)', speckle: 60, grain: detailed ? 3200 : 0 });
-      }
+    this.gfx = { ...this.gfx, ...gfx, budget: { ...this.gfx.budget, ...(gfx.budget || {}) } };
+    const pb = prev.budget, b = this.gfx.budget;
+    if (this._gfxApplied && (prev.detail !== this.gfx.detail || String(pb.bevel) !== String(b.bevel))) {
+      const old = this.arrowGeo;
+      this.arrowGeo = this._cubeGeometry();
+      for (const m of [this.arrowMesh, this.stoneMesh, this.coreMesh]) m.geometry = this.arrowGeo;
+      old.dispose();
     }
+    if (this._gfxApplied && (prev.detail !== this.gfx.detail || pb.material !== b.material || pb.texture !== b.texture)) this._makeMaterials();
+    const coat = this.gfx.reflections === 'on';
+    if ('clearcoat' in this.arrowMat) this.arrowMat.clearcoat = coat ? 0.65 : 0;
+    if ('roughness' in this.arrowMat) this.arrowMat.roughness = coat ? 0.42 : 0.55;
+    if ('clearcoat' in this.chevMat) this.chevMat.clearcoat = coat ? 0.8 : 0;
+    if ('clearcoat' in this.coreMat) this.coreMat.clearcoat = coat ? 1 : 0;
     this._gfxApplied = true;
     for (const m of [this.arrowMat, this.stoneMat, this.coreMat, this.chevMat, this.bandMat]) m.needsUpdate = true;
   }
 
   /** Emissive boost for the core when bloom can carry it (hierarchy never depends on it). */
   setCoreGlow(k) {
+    this._coreGlow = k;
     this.coreMat.emissiveIntensity = 0.55 * k;
   }
 

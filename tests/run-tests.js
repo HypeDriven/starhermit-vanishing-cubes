@@ -25,10 +25,13 @@ import { CHALLENGES, challengeLimits } from '../js/content/challenges.js';
 import { THEMES, themeById, unlockedThemes } from '../js/content/themes.js';
 import { ACHIEVEMENTS, evaluateAchievements } from '../js/content/achievements.js';
 import { startServer } from './test-server.mjs';
+import { readFileSync } from 'node:fs';
 import {
-  detectPreset, resolve, presetTier, describe as describeGfx, choosePreset, setOverride, normalize,
-  PRESETS, CATEGORIES,
+  detectPreset, detectLevel, presetForLevel, budget as gfxBudget, resolve, presetTier, describe as describeGfx, choosePreset, setOverride, normalize,
+  PRESETS, CATEGORIES, LEVELS, BUDGETS,
 } from '../js/render/gfx.js';
+// js/render/gpu-level.js is a classic script in the page (window.StarHermitGpu); evaluate it the same way here.
+new Function('window', 'module', readFileSync(new URL('../js/render/gpu-level.js', import.meta.url), 'utf8'))(globalThis, undefined);
 import { gfxStrings, pickLocale, GFX_LOCALES } from '../js/ui/gfx-strings.js';
 
 // ---------- tiny framework ----------
@@ -1170,16 +1173,48 @@ test('server shuts down cleanly', async () => {
 
 describe('gfx');
 
-test('detectPreset maps GPU strings to tiers', () => {
-  eq(detectPreset('ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)), SwiftShader driver)'), 'low');
-  eq(detectPreset('llvmpipe (LLVM 15.0.7, 256 bits)'), 'low');
-  eq(detectPreset('ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0)'), 'high');
-  eq(detectPreset('Apple M2'), 'high');
-  eq(detectPreset('ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11)'), 'balanced');
-  eq(detectPreset('Adreno (TM) 650'), 'balanced');
-  eq(detectPreset(''), 'balanced');
-  eq(detectPreset('Apple M2', { mobile: true }), 'balanced', 'mobile caps auto at balanced');
-  eq(detectPreset('SwiftShader', { mobile: true }), 'low');
+const DESK = { cores: 8, memoryGb: 8 };
+const PHONE = { mobile: true, cores: 8, memoryGb: 8 };
+
+test('hardware level picks the Auto preset (Low 0, Balanced 4, High 10, Ultra 17)', () => {
+  eq(detectPreset('ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)), SwiftShader driver)', DESK), 'low');
+  eq(detectLevel('llvmpipe (LLVM 15.0.7, 256 bits)', DESK), 0);
+  eq(detectPreset('ANGLE (AMD, AMD Radeon(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)', DESK), 'low');
+  eq(detectPreset('ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11)', DESK), 'low');
+  eq(detectPreset('ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11)', DESK), 'balanced');
+  eq(detectPreset('ANGLE (NVIDIA, NVIDIA GeForce GTX 1070 Direct3D11 vs_5_0 ps_5_0)', DESK), 'high');
+  eq(detectPreset('ANGLE (NVIDIA, NVIDIA GeForce RTX 4080 Direct3D11 vs_5_0 ps_5_0)', DESK), 'ultra');
+  eq(detectLevel('ANGLE (NVIDIA, NVIDIA GeForce RTX 5090 Direct3D11 vs_5_0 ps_5_0)', DESK), 20);
+  eq(detectPreset('ANGLE (NVIDIA, NVIDIA GeForce RTX 5090 Direct3D11 vs_5_0 ps_5_0)', DESK), 'ultra');
+  for (const [p, lv] of Object.entries(LEVELS)) eq(presetForLevel(lv), p);
+  eq(presetForLevel(3), 'low');
+  eq(presetForLevel(16), 'high');
+});
+
+test('phones and tablets are Balanced at most; software GPUs stay Low', () => {
+  eq(detectPreset('Adreno (TM) 740', PHONE), 'balanced');
+  ok(detectLevel('Adreno (TM) 740', PHONE) <= 9, 'phone level capped at 9');
+  eq(detectPreset('Apple M2', PHONE), 'balanced');
+  eq(detectPreset('SwiftShader', PHONE), 'low');
+});
+
+test('per-preset budget table: explicit, never cheaper from Low to Ultra, sparks scale with the level', () => {
+  const keys = ['material', 'bevel', 'texture', 'sculpture', 'segments', 'motes', 'sparks', 'bloomRes', 'aoRes'];
+  for (const p of PRESETS) for (const k of keys) ok(BUDGETS[p][k] !== undefined, p + '.' + k);
+  for (let i = 1; i < PRESETS.length; i++) {
+    const a = BUDGETS[PRESETS[i - 1]], b = BUDGETS[PRESETS[i]];
+    for (const k of ['texture', 'sculpture', 'segments', 'motes', 'sparks', 'bloomRes', 'aoRes']) ok(b[k] >= a[k], PRESETS[i] + '.' + k);
+    ok(b.bevel[0] >= a.bevel[0] && b.bevel[1] >= a.bevel[1], PRESETS[i] + '.bevel');
+  }
+  eq(PRESETS.map((p) => BUDGETS[p].material).join(), 'lambert,standard,physical,physical');
+  eq(PRESETS.map((p) => BUDGETS[p].bloomRes).join(), '0.5,0.5,0.5,1');
+  eq(gfxBudget('high', 10).sparks, BUDGETS.high.sparks, 'floor level = table value');
+  ok(gfxBudget('high', 13).sparks > BUDGETS.high.sparks, 'faster GPU within the preset gets more sparks');
+  ok(gfxBudget('low', 20).sparks <= BUDGETS.low.sparks * 2, 'at most 2x within a preset');
+  const r = resolve({ preset: 'balanced' }, 'low', 4);
+  eq(r.level, 4);
+  eq(JSON.stringify(r.budget), JSON.stringify(gfxBudget('balanced', 4)));
+  eq(resolve({}, 'low', 0).budget.material, 'lambert');
 });
 
 test('resolve: auto follows detection, explicit preset wins', () => {
@@ -1253,7 +1288,7 @@ test('graphics panel strings exist in every required locale', () => {
   for (const loc of ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT']) {
     ok(GFX_LOCALES.includes(loc), loc);
     const t = gfxStrings(loc);
-    for (const k of ['quality', 'renderScale', 'adaptive', 'showFps', 'postFailed', ...Object.keys(CATEGORIES)]) {
+    for (const k of ['quality', 'renderScale', 'adaptive', 'showFps', 'postFailed', 'level', ...Object.keys(CATEGORIES)]) {
       ok(t(k) && t(k) !== k, loc + ':' + k);
     }
   }

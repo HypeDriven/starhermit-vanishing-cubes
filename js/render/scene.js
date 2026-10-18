@@ -9,7 +9,7 @@ import { Rng } from '../rules/rng.js';
 import { CubeViews, SPACING } from './cubeviews.js';
 import { CameraRig, FRAME } from './camera.js';
 import { Vfx, Motes } from './vfx.js';
-import { detectPreset, describe, resolve, SHADOW_MAP } from './gfx.js';
+import { detectLevel, presetForLevel, describe, resolve, SHADOW_MAP } from './gfx.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
@@ -46,8 +46,8 @@ const GradeShader = {
 
 // Pale sky: vertical gradient, a warm sun glow toward the key light and soft
 // procedural cloud banks that drift when the background is animated.
-function skyDome(theme) {
-  const geo = new THREE.SphereGeometry(220, 32, 20);
+function skyDome(theme, k = 1) {
+  const geo = new THREE.SphereGeometry(220, Math.max(16, Math.round(32 * k)), Math.max(10, Math.round(20 * k)));
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
@@ -108,10 +108,11 @@ function skyDome(theme) {
 
 // Weathered stone for the floating sculpture: deterministic mottling and
 // fine strata so large flat faces are not a single flat tone.
-function stoneTexture() {
+function stoneTexture(size = 128) {
   const c = document.createElement('canvas');
-  c.width = c.height = 128;
+  c.width = c.height = size;
   const g = c.getContext('2d');
+  g.scale(size / 128, size / 128);
   g.fillStyle = '#ffffff';
   g.fillRect(0, 0, 128, 128);
   let s = 99;
@@ -135,6 +136,15 @@ function stoneTexture() {
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   return tex;
+}
+
+// Run a post pass at a fraction of the frame: EffectComposer resizes every pass to the full frame, so
+// the pass's own setSize applies the budget's scale.
+function atScale(pass, k) {
+  if (!(k > 0 && k < 1)) return pass;
+  const setSize = pass.setSize.bind(pass);
+  pass.setSize = (w, h) => setSize(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)));
+  return pass;
 }
 
 function isMobile() {
@@ -163,7 +173,11 @@ export class GameScene {
     this.renderer.shadowMap.enabled = false;
     this.renderer.shadowMap.type = THREE.PCFShadowMap; // filtered PCF; the soft variant is deprecated in r18x
     this.gpu = GameScene._gpuName(this.renderer);
-    this.detected = detectPreset(this.gpu, { mobile: isMobile() });
+    // StarHermit hardware level (gpu-level.js) → Auto preset: Low 0, Balanced 4, High 10, Ultra 17.
+    let sys = {};
+    try { sys = globalThis.StarHermitGpu?.detectSystem() || {}; } catch { sys = {}; }
+    this.level = detectLevel(this.gpu, { ...sys, mobile: !!sys.mobile || isMobile() });
+    this.detected = presetForLevel(this.level);
     this.size = [0, 0];
     this.pixelRatio = 1;
     this.adaptiveScale = 1;
@@ -229,7 +243,7 @@ export class GameScene {
 
   /** Apply saved graphics settings live (no reload). */
   setGraphics(saved) {
-    const g = resolve(saved, this.detected);
+    const g = resolve(saved, this.detected, this.level);
     const prev = this.q;
     this.q = g;
     const size = SHADOW_MAP[g.shadows];
@@ -258,10 +272,12 @@ export class GameScene {
     }
     this._applyLightBalance();
     this.envDetail = g.detail === 'detailed' ? 1 : 0.55;
-    this.vfx.setQuality(g.particles === 'high' ? 1 : 0.35);
-    this.motes.setCount(g.particles === 'high' ? 70 : 0);
+    this.vfx.setQuality((g.particles === 'high' ? 1 : 0.35) * g.budget.sparks);
+    this.motes.setCount(g.particles === 'high' ? g.budget.motes : 0);
     this._applyMotion();
-    this.cubeViews?.applyGfx({ detail: g.detail, reflections: g.reflections });
+    this.cubeViews?.applyGfx({ detail: g.detail, reflections: g.reflections, budget: g.budget });
+    // The sculpture's materials, LOD and module count follow the preset's budget.
+    if (prev && prev.preset !== g.preset && this._envArgs) this.buildEnvironment(...this._envArgs);
     this.cubeViews?.setCoreGlow(g.bloom === 'on' ? 1.8 : 1);
     this.adaptiveScale = 1;
     this._frames = [];
@@ -305,6 +321,7 @@ export class GameScene {
     return {
       gpu: this.gpu || '',
       detected: this.detected,
+      level: this.level,
       resolved: this.q,
       summary: describe(this.q, px, words),
       fps: Math.round(this.fps || 0),
@@ -366,7 +383,7 @@ export class GameScene {
       composer.setSize(w, h);
       composer.addPass(new RenderPass(this.scene, this.camera));
       if (g.ao !== 'off') {
-        const ao = new GTAOPass(this.scene, this.camera, pw, ph);
+        const ao = atScale(new GTAOPass(this.scene, this.camera, pw, ph), g.budget.aoRes);
         ao.output = GTAOPass.OUTPUT.Default;
         ao.blendIntensity = 0.85;
         ao.updateGtaoMaterial({ radius: 0.55, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: g.ao === 'high' ? 16 : 8 });
@@ -376,7 +393,7 @@ export class GameScene {
       if (g.bloom === 'on') {
         // Scene-linear HDR input: only emissive cores, the sun glow and hot
         // specular highlights exceed this threshold; lit white faces do not.
-        composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.4, 0.5, 2.2));
+        composer.addPass(atScale(new UnrealBloomPass(new THREE.Vector2(w, h), 0.4, 0.5, 2.2), g.budget.bloomRes));
       }
       composer.addPass(new OutputPass());
       if (g.grade === 'on') {
@@ -457,7 +474,9 @@ export class GameScene {
       this.sky.material.dispose();
     }
     this._theme = theme;
-    this.sky = skyDome(theme);
+    this._envArgs = [seed, theme];
+    const B = this.q.budget;
+    this.sky = skyDome(theme, B.segments);
     this.sky.material.uniforms.sunDir.value.copy(this.keyDir);
     this.scene.add(this.sky);
     this.motes.setColor(theme.light.key);
@@ -465,15 +484,20 @@ export class GameScene {
 
     const rng = new Rng('decor:' + seed);
     const detail = this.envDetail ?? 1;
-    const stoneTex = detail >= 1 ? stoneTexture() : null;
-    const structMat = new THREE.MeshStandardMaterial({
+    const stoneTex = detail >= 1 ? stoneTexture(Math.min(256, B.texture)) : null;
+    const envMat = (params) => {
+      if (B.material !== 'lambert') return new THREE.MeshStandardMaterial(params);
+      const { roughness, metalness, ...rest } = params;
+      return new THREE.MeshLambertMaterial(rest);
+    };
+    const structMat = envMat({
       color: theme.env.structure,
       roughness: 0.85,
       metalness: 0.0,
       map: stoneTex,
     });
     structMat._ownByEnv = true;
-    const accentMat = new THREE.MeshStandardMaterial({
+    const accentMat = envMat({
       color: theme.env.accent,
       roughness: 0.55,
       metalness: 0.25,
@@ -484,7 +508,7 @@ export class GameScene {
     // The impossible sculpture: a broken ring of staircases to nowhere,
     // floating arcs, and obelisks at impossible angles — dense enough that
     // several modules always read inside the authored camera frame.
-    const modules = Math.max(10, Math.round(26 * detail));
+    const modules = Math.max(8, Math.round(26 * detail * B.sculpture));
     const ringRadius = 13 + rng.next() * 3.5;
     // The camera orbits at radius ≤ ~10 for every board size; modules are
     // pushed outside 14 units so one can never crowd the board or camera.
@@ -535,7 +559,7 @@ export class GameScene {
     for (let i = 0; i < arcCount; i++) {
       const radius = 4 + rng.next() * 3.5;
       const arc = Math.PI * (0.4 + rng.next() * 0.6);
-      const geo = new THREE.TorusGeometry(radius, 0.22 + rng.next() * 0.14, 8, 32, arc);
+      const geo = new THREE.TorusGeometry(radius, 0.22 + rng.next() * 0.14, Math.max(4, Math.round(8 * B.segments)), Math.max(12, Math.round(32 * B.segments)), arc);
       const mesh = new THREE.Mesh(geo, rng.next() < 0.5 ? structMat : accentMat);
       const angle = rng.next() * Math.PI * 2;
       keepClear(mesh.position.set(
@@ -582,7 +606,7 @@ export class GameScene {
     }
 
     // Soft cloud-shadow disc far below.
-    const discGeo = new THREE.CircleGeometry(9, 40);
+    const discGeo = new THREE.CircleGeometry(9, Math.max(20, Math.round(40 * B.segments)));
     const discMat = new THREE.MeshBasicMaterial({
       color: theme.sky.fog,
       transparent: true,
@@ -614,7 +638,7 @@ export class GameScene {
 
   buildBoard(state, theme) {
     if (this.cubeViews) this.cubeViews.dispose();
-    this.cubeViews = new CubeViews(this.scene, theme, { detail: this.q.detail, reflections: this.q.reflections });
+    this.cubeViews = new CubeViews(this.scene, theme, { detail: this.q.detail, reflections: this.q.reflections, budget: this.q.budget });
     this.cubeViews.setCoreGlow(this.q.bloom === 'on' ? 1.8 : 1);
     this.cubeViews.build(state);
     let extent = 1;

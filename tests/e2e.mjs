@@ -298,6 +298,7 @@ try {
   await gd.selectOption('#gfx-preset', 'high');
   check('gfx: High applied', (await gfxPreset(gd)) === 'high');
   check('gfx: summary shows High cost', /2048² shadows/.test(await gd.locator('#gfx-summary').textContent()));
+  check('gfx: summary shows the hardware level (SwiftShader = Level 0)', / · Level 0 · /.test(await gd.locator('#gfx-summary').textContent()));
   check('gfx: focus stays on the preset control', await gd.evaluate(() => document.activeElement?.id === 'gfx-preset'));
   await gd.selectOption('#gfx-bloom', 'off');
   check('gfx: bloom override applied', !/bloom/.test(await gd.locator('#gfx-summary').textContent()));

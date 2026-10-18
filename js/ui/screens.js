@@ -725,7 +725,7 @@ function buildGraphicsControls(sec, savedRaw, gfx, commit) {
   const summary = document.createElement('p');
   summary.id = 'gfx-summary';
   summary.className = 'muted small gfx-summary';
-  summary.textContent = [gfx.info?.gpu || t('unknownGpu'), gfx.info?.summary].filter(Boolean).join(' · ');
+  summary.textContent = [gfx.info?.gpu || t('unknownGpu'), gfx.info && Number.isFinite(gfx.info.level) ? t('level').replace('{n}', gfx.info.level) : null, gfx.info?.summary].filter(Boolean).join(' · ');
   sec.append(summary);
   if (gfx.info?.postFailed) {
     const note = document.createElement('p');

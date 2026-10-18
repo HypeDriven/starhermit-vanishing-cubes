@@ -153,7 +153,7 @@ export class Vfx {
 
 // Ambient light motes drifting slowly around the sculpture: purely decorative,
 // never pickable, frozen under reduced motion or a static background.
-const MOTE_MAX = 90;
+export const MOTE_MAX = 240; // Ultra budget 120; Low 0
 
 export class Motes {
   constructor(scene) {
