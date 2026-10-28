@@ -1,0 +1,17 @@
+# Today's Daily (generated on the worker): cleared by keys, the results.
+# viewport 1280x800@1
+frames 90
+click =Daily challenge
+frames 200
+click =Start the daily
+frames 60
+key Enter 1
+frames 10
+repeat 6000 until Board cleared
+key Enter 1
+frames 6
+end
+frames 120
+expect Board cleared
+expect Total
+save d-results

@@ -1,0 +1,24 @@
+# The first two lessons on a DPR-3 phone: the focused cube each step names, released (or refused) with Enter.
+# viewport 390x844@3
+frames 90
+touch =All modes
+frames 20
+touch Learn
+frames 20
+touch Release
+frames 60
+repeat 3000 until Board cleared
+key Enter 1
+frames 8
+end
+frames 120
+save l-results
+expect Board cleared
+touch =Next lesson
+frames 60
+repeat 3000 until Board cleared
+key Enter 1
+frames 8
+end
+frames 120
+expect Board cleared

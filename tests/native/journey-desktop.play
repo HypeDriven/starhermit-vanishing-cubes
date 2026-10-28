@@ -1,0 +1,26 @@
+# Journey stage 1 cleared by keys (Enter picks the first clear cube, Enter again releases it), the results, the next stage.
+# viewport 1280x800@1
+frames 90
+click =Play
+frames 20
+key Enter 1
+frames 10
+repeat 3000 until Board cleared
+key Enter 1
+frames 6
+end
+frames 120
+expect Board cleared
+expect Total
+save j-results
+click =Next stage
+frames 60
+expect Turn Around
+key Escape 1
+frames 30
+key Escape 1
+frames 10
+expect Paused
+click =Leave round
+frames 90
+expect Round conceded

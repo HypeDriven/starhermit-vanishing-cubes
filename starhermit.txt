@@ -1,17 +1,61 @@
 name=Vanishing Cubes
 description=Rotate a three-dimensional block sculpture and release arrow-marked cubes when their paths are clear.
-launch=index.html
 owner=2712e04e-461b-4d23-81ae-e40b429128a8
 server=score-script.js
 version=1.0.0
 cover=cover.jpg
+
+# StarHermit engine script game: one package, played natively by the
+# StarHermit client and in browsers by the engine's web runtime. Browsers open
+# launch=index.html, the loader `npm run package` writes (it pins the engine
+# on wiki.starhermit.com by hash; never edit it). Re-run `npm run package`
+# after every change and commit index.html + starhermit-files.json.
+launch=index.html
+engine.api=1
+engine.entry=native/main.ts
+engine.version=1.21.0
+engine.minor=23
+engine.capabilities=platform,storage,clipboard
+
+# Keyboard actions (players rebind keys and pads in the runtime's Options).
+# The browser build's names were camelCase (navNext, rotateLeft, camReset):
+# action names are lowercase here, so bindings saved under the old names do
+# not carry over. Tab belongs to the runtime's focus, so Next target is the
+# right arrow only. The sculpture is also played with the pointer or a
+# finger: tap a cube to release it, drag to orbit the camera.
+engine.group.confirm=Cubes
 control.confirm=Enter+NumpadEnter | Release selected cube
-control.cancel=Escape | Cancel / close dialog
-control.pause=KeyP | Pause
-control.navNext=Tab+ArrowRight | Next legal target
-control.navPrev=ArrowLeft | Previous legal target
-control.rotateLeft=KeyQ | Rotate assembly left
-control.rotateRight=KeyE | Rotate assembly right
+control.nav_next=ArrowRight | Next legal target
+control.nav_prev=ArrowLeft | Previous legal target
+engine.group.rotate_left=Camera
+control.rotate_left=KeyQ | Rotate assembly left
+control.rotate_right=KeyE | Rotate assembly right
+control.cam_reset=KeyR | Reset camera
+control.orbit_left=KeyA | Orbit camera left
+control.orbit_right=KeyD | Orbit camera right
+control.orbit_up=KeyW | Orbit camera up
+control.orbit_down=KeyS | Orbit camera down
+engine.group.undo=Round
 control.undo=KeyU | Undo (practice)
 control.hint=KeyH | Hint
-control.camReset=KeyR | Reset camera
+control.pause=KeyP | Pause
+control.cancel=Escape | Cancel / close dialog
+
+# Gamepad (the browser build's polling): South (A) releases, East (B)
+# cancels, West (X) undoes, North (Y) hints, the shoulders turn the
+# assembly, the D-pad steps through clear cubes, the left stick orbits the
+# camera, the right stick press resets it, Start pauses.
+engine.gamepad.confirm=South
+engine.gamepad.cancel=East
+engine.gamepad.undo=West
+engine.gamepad.hint=North
+engine.gamepad.rotate_left=LeftShoulder
+engine.gamepad.rotate_right=RightShoulder
+engine.gamepad.cam_reset=RightStickPress
+engine.gamepad.pause=Start
+engine.gamepad.nav_prev=DpadLeft
+engine.gamepad.nav_next=DpadRight
+engine.gamepad.orbit_left=LeftStickLeft
+engine.gamepad.orbit_right=LeftStickRight
+engine.gamepad.orbit_up=LeftStickUp
+engine.gamepad.orbit_down=LeftStickDown

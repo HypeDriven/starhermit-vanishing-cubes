@@ -1,11 +1,36 @@
 # Vanishing Cubes — Product and Game Specification
 
-**Document status:** design specification only; no implementation is included.  
+**Document status:** running specification. Section 0 describes the game as it ships, on the StarHermit engine; the later sections are the original design intent.  
 **Game index:** 12  
 **Genre:** Three-dimensional direction puzzle  
 **Players:** 1 player; optional asynchronous score comparison  
 **Targets:** desktop browsers, mobile browsers, landscape and portrait where practical  
 **Rendering direction:** Three.js-first presentation with a fully usable semantic HTML interface layer
+
+
+## 0. Vanishing Cubes on the StarHermit engine
+
+Vanishing Cubes is a StarHermit engine **script game** (engine 1.21.0, `engine.minor=23`, entry `native/main.ts`), played natively by the StarHermit client and in browsers by the engine's web runtime (the loader `index.html` and `starhermit-files.json`, written by `npm run package`).
+
+**Modules.** The rules (`js/rules/engine.js`, scoring, generator, rng), the session (`js/session/session.js`), the merge helpers and the content (`js/content/*`) are the browser build's ES modules, imported unchanged (engine.js clones states as JSON: the native interpreter has no structuredClone). `js/content/generated.js` holds the 40 Journey stages and the 8 challenge boards precomputed by `tools/gen-levels.mjs` (generation takes seconds natively); a unit test checks it matches the generator. Practice and Daily boards are generated on a `starhermit:script` worker (`native/gen-worker.js`) with a "Preparing the board…" line after 300 ms. `native/render.ts` draws the sculpture on `starhermit:scene`, `native/screens.ts` the UI on `starhermit:ui` (styles: `tools/ui-style.css` → `assets/ui-style.json`), `native/audio.ts` the sound, `native/platform.ts` saves and the platform, `native/i18n.ts` the nine locales.
+
+**Screens.** Top bar (brand, sync state, Profile, Help, Settings); Title (Play / Resume, Daily challenge, Journey, Scores, All modes, Sign in or Invite, progress line); Modes (Learn, Journey, Daily, Practice, Challenge, Score chase); per-mode setup; Scores (the StarHermit high-score board when signed in, personal records per Daily/challenge board, a display-name filter); How to play (controls from the live bindings); Results (headline, stars, score breakdown, achievements, personal record, leaderboard line, Retry / Next / Modes). Dialogs: Pause (Resume, Settings, Help, Restart, Leave), Settings, Profile, Board list.
+
+**Play layout.** At ≥ 1024 logical px: the objective rail (stats, live score breakdown, par, tip) and the actions rail (Undo, Hint, rotations, Reset camera, Board list, selection) beside the playfield. Narrower: Info / Tools drawers and a bottom quick-action tray (a right-hand column on short landscape screens). The HUD shows the stage and cubes left, the clock on timed rounds and Pause. A 3-2-1 countdown (any press skips it) starts each round. The camera is fitted to the playfield rectangle with a lens shift.
+
+**Controls.** Keys: Enter release selected cube (or select the first clear one), ←/→ previous/next clear cube, Q/E rotate the assembly, W/A/S/D orbit the camera (new), R reset camera, U undo (Practice), H hint, P or Escape pause. Tab belongs to the runtime's focus and no longer cycles cubes; action names are lowercase, so key bindings saved under the browser build's names do not carry over. Pads: South release, East cancel, West undo, North hint, shoulders rotate, D-pad cycle, left stick orbit, right-stick press reset, Start pause. Pointer and touch: tap a cube to select and release it, drag to orbit (each ~60° of drag counts as one rotation), optional tap-to-grab camera. Clear cubes are named areas over the 3D view (screen readers, play scripts, browser checks); the Board list lists every cube with a release button for the clear ones.
+
+**Settings.** The game's own: captions for sounds, colour palette (default / colour-blind safe / mono safe), left-handed layout, tap-to-grab camera, timing assistance, cosmetic theme (unlocked by stars), replay lessons. Sound volumes, graphics level, language, key bindings, reduced motion, high contrast and text size are the runtime's Options ("More options" opens them).
+
+**Graphics.** The old presets map to the runtime's tier (`frame().quality`): Low (Lambert, no shadows, no post), Balanced (Standard, 1024 shadows, bloom, grade, FXAA, reflections), High (clear-coated Physical, 2048 shadows, GTAO, SMAA), Ultra (4096 shadows, full GTAO, MSAA, larger budgets). Lights and shadows use the r180 page's own values (no compensation at minor 23); reflections use RoomEnvironment through PMREM at environmentIntensity 0.14.
+
+**Audio.** The recorded one-shots in `sfx/`, a generative pad and wind bed rendered into clips (music bus; the runtime has no ambience bus).
+
+**Platform.** One save document (`js/migrate.js`: options, progression, profile, achievements, personal-record boards, the resumable round) on the device and, signed in, the cloud slot; conflicting copies merge progress. The browser build's cloud slot (`game:<slug>`) is merged in once and replaced; its settings KV mirror is read once for the game's own options. Finished Daily and Challenge rounds of signed-in players post their score to the `high-score` board through `score-script.js`, which range-checks it (scores are not replay-verified). The Daily uses the platform clock's UTC day when available, else the device's. Telemetry, presence and activity bookkeeping had no route and are gone.
+
+**Checks.** `npm test`: rules/content/replay/fuzz/session tests (`tests/run-tests.js`), i18n coverage of `native/*.ts`, save migration tests, and `tests/native.mjs` (web index up to date, tsc, `starhermit check` with no warnings, render-check play scripts: Journey 1 cleared, two lessons on a DPR-3 phone, every screen and dialog, a challenge sideways, today's Daily). `npm run test:browser` plays the web package in GPU Chrome at desktop, DPR-3 phone and DPR-3 landscape.
+
+**Known limitations.** The old build's camera fit frames the board tightly (kept). Keyboard bindings under the old action names are not migrated. Guests' old browser localStorage progress cannot migrate (cloud saves do).
 
 ## 1. Product vision
 

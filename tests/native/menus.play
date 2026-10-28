@@ -1,0 +1,90 @@
+# Every screen and dialog the top bar and the title link: settings, profile, help, all modes and each setup list,
+# scores, then a practice round's board list, pause overlay with its settings and help, undo and hint, and leaving.
+# viewport 1280x800@1
+frames 90
+click =Settings
+frames 10
+expect Captions
+save m-settings
+click =Done
+frames 10
+click =Profile
+frames 10
+expect Display name
+click =Done
+frames 10
+click =Help
+frames 10
+expect Controls
+save m-help
+click =Back
+frames 10
+click =Daily challenge
+frames 120
+expect Start the daily
+save m-daily
+click =Back
+frames 10
+click Learn
+frames 10
+expect Blocked paths
+click =Back
+frames 10
+click Journey
+frames 10
+expect Chapter 1
+click =Back
+frames 10
+click Challenge
+frames 10
+expect Exact
+click =Back
+frames 10
+click Score chase
+frames 10
+expect Personal records
+save m-scores
+click =Back
+frames 10
+click Practice
+frames 10
+click Medium
+frames 120
+key Space 1
+frames 20
+click =Board list
+frames 10
+expect Every remaining cube
+save m-board
+click =Close
+frames 10
+key Enter 1
+frames 5
+key Enter 1
+frames 10
+click =Undo
+frames 10
+click =Hint
+frames 10
+expect Hint
+key KeyQ 1
+frames 30
+key KeyP 1
+frames 10
+expect Paused
+click =Settings #2
+frames 10
+expect Captions
+click =Done
+frames 10
+expect Paused
+click =Help #2
+frames 10
+click =Back
+frames 10
+click =Leave round
+frames 90
+expect Round conceded
+click =Modes
+frames 10
+expect Choose a mode

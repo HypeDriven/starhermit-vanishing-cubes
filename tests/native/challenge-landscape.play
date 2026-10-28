@@ -1,0 +1,23 @@
+# Exact Measure on a DPR-3 phone held sideways (the quick actions a right-hand column): cleared in exactly as many taps
+# as cubes by keys, then the results; a timed challenge's clock in the HUD, paused by the tray's Pause.
+# viewport 844x390@3
+frames 90
+touch =All modes
+frames 20
+touch Challenge
+frames 20
+touch =Exact Measure
+frames 60
+key Enter 1
+frames 10
+repeat 4000 until Board cleared
+key Enter 1
+frames 6
+end
+frames 120
+expect Board cleared
+save c-results
+touch =Modes
+frames 20
+touch Challenge
+frames 20

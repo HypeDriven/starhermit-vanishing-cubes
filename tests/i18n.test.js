@@ -1,4 +1,4 @@
-// Every string key used in markup (data-i18n*) and code (t('…')) exists in all
+// Every string key the engine client uses (T("…") in native/*.ts) exists in all
 // nine locales with the same {placeholders} as US English, every locale has
 // exactly the US English keys, and every content name (levels, chapters,
 // tips, lessons and their steps, challenges, themes, achievements) is
@@ -13,41 +13,37 @@ import { LESSONS } from '../js/content/tutorials.js';
 import { CHALLENGES } from '../js/content/challenges.js';
 import { THEMES } from '../js/content/themes.js';
 import { ACHIEVEMENTS } from '../js/content/achievements.js';
-import { DEFAULT_BINDINGS } from '../js/ui/bindings.js';
+import { ENGINE_STRINGS } from '../js/ui/engine-strings.js';
+import { PLATFORM_STRINGS } from '../js/ui/platform-strings.js';
 
 const LOCALES = ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT'];
 const root = new URL('../', import.meta.url);
-function walk(dir) {
-  return readdirSync(new URL(dir, root)).flatMap((f) => {
-    const rel = dir + f;
-    return statSync(new URL(rel, root)).isDirectory() ? walk(rel + '/') : rel.endsWith('.js') && !rel.endsWith('strings.js') ? [rel] : [];
-  });
-}
-const code = walk('js/').map((f) => readFileSync(new URL(f, root), 'utf8')).join('\n');
-const html = readFileSync(new URL('index.html', root), 'utf8');
-const en = STRINGS['en-US'];
-const gfxKeys = new Set(GFX_STRING_KEYS);
+const code = readdirSync(new URL('native/', root)).filter((f) => f.endsWith('.ts')).map((f) => readFileSync(new URL('native/' + f, root), 'utf8')).join('\n');
+const en = { ...STRINGS['en-US'], ...ENGINE_STRINGS['en-US'] };
 const used = new Set();
-for (const m of code.matchAll(/\bt\('([A-Za-z0-9_]*[A-Za-z0-9])'(?!\s*\+)/g)) if (!gfxKeys.has(m[1])) used.add(m[1]);
-for (const m of html.matchAll(/data-i18n(?:-aria|-title)?="([A-Za-z0-9_]+)"/g)) used.add(m[1]);
-// Keys built at run time: prefix + id.
-for (const b of DEFAULT_BINDINGS) { used.add('bind_' + b.action); used.add('pad_' + b.action); }
+for (const m of code.matchAll(/\bT\("([A-Za-z0-9_]*[A-Za-z0-9])"/g)) used.add(m[1]);
+for (const m of code.matchAll(/"(net(?:Synced|Saving|Offline)|head[A-Z]\w*|nextStage|nextLesson|playAgain)"/g)) used.add(m[1]);
+const ACTIONS = ['confirm', 'cancel', 'pause', 'navNext', 'navPrev', 'rotateLeft', 'rotateRight', 'undo', 'hint', 'camReset'];
+for (const a of ACTIONS) used.add('bind_' + a);
 for (const k of ['arrow', 'stone', 'core']) used.add('describe_' + k);
 for (const d of ['easy', 'medium', 'hard']) { used.add('diff_' + d); used.add('diffBlurb_' + d); }
 for (const m of ['learn', 'journey', 'daily', 'practice', 'challenge']) { used.add('setupH_' + m); used.add('modeName_' + m); }
 for (let i = 0; i < 6; i++) used.add('dir_' + i);
-for (const m of code.matchAll(/this\.caption\('([a-z-]+)'/g)) used.add('cap_' + m[1].replace(/-/g, '_'));
-for (const m of code.matchAll(/'(head[A-Z]\w*|net[A-Z]\w*|lb[A-Z]\w*|nextStage|nextLesson|playAgain|modes)'/g)) if (!/^lb/.test(m[1])) used.add(m[1]);
+for (const m of readFileSync(new URL('native/audio.ts', root), 'utf8').match(/CAPTIONED = new Set\(\[([^\]]*)\]/)[1].matchAll(/"([a-z-]+)"/g)) used.add('cap_' + m[1].replace(/-/g, '_'));
 const vars = (s) => [...String(s).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
 
 test('ships the nine locales', () => assert.deepEqual(Object.keys(STRINGS).sort(), [...LOCALES].sort()));
 test('every locale has exactly the US English keys', () => {
-  for (const loc of LOCALES) assert.deepEqual(Object.keys(STRINGS[loc]).sort(), Object.keys(en).sort(), loc);
+  for (const loc of LOCALES) assert.deepEqual(Object.keys(STRINGS[loc]).sort(), Object.keys(STRINGS['en-US']).sort(), loc);
 });
-test('found the keys in markup and code', () => assert.ok(used.size > 250, String(used.size)));
+test('found the keys in the code', () => assert.ok(used.size > 200, String(used.size)));
+test('engine strings: every locale has the US English keys', () => {
+  for (const loc of LOCALES) assert.deepEqual(Object.keys(ENGINE_STRINGS[loc]).sort(), Object.keys(ENGINE_STRINGS['en-US']).sort(), loc);
+});
+test('platform strings ship every locale', () => { for (const loc of LOCALES) assert.ok(PLATFORM_STRINGS[loc]?.signIn, loc); });
 for (const loc of LOCALES) {
   test(`${loc}: every used key, matching placeholders`, () => {
-    const L = STRINGS[loc];
+    const L = { ...STRINGS[loc], ...ENGINE_STRINGS[loc] };
     assert.deepEqual([...used].filter((k) => typeof L[k] !== 'string'), []);
     for (const k of Object.keys(en)) if (typeof en[k] === 'string') assert.equal(vars(L[k]), vars(en[k]), `${loc}.${k}`);
   });
@@ -75,11 +71,10 @@ test('English content strings match the authored data', () => {
   }
   for (const c of CHALLENGES) assert.deepEqual([en.challenges[c.id], en.challengeBlurbs[c.id]], [c.name, c.blurb]);
   for (const a of ACHIEVEMENTS) assert.deepEqual(en.achievements[a.key], [a.name, a.desc]);
-  for (const b of DEFAULT_BINDINGS) assert.deepEqual([en['bind_' + b.action], en['pad_' + b.action]], [b.label, b.gamepad]);
 });
 test('non-English locales are translated', () => {
   for (const loc of LOCALES.filter((l) => !l.startsWith('en'))) {
-    const same = [...used].filter((k) => STRINGS[loc][k] === en[k]);
+    const same = [...used].filter((k) => ({ ...STRINGS[loc], ...ENGINE_STRINGS[loc] })[k] === en[k]);
     assert.ok(same.length < 15, `${loc}: ${same.join(', ')}`);
   }
 });

@@ -32,6 +32,9 @@ export const TERMINAL = Object.freeze({
 
 const MAX_RAY_STEPS = 64;
 
+// States are plain JSON (the StarHermit engine's native interpreter has no structuredClone).
+const cloneState = (v) => JSON.parse(JSON.stringify(v));
+
 export function posKey(pos) {
   return pos[0] + ',' + pos[1] + ',' + pos[2];
 }
@@ -236,7 +239,7 @@ export function applyCommand(state, cmd) {
     return { state, events: [], error: { code: 'not-active', message: 'Round is not active.' } };
   }
 
-  const st = structuredClone(state);
+  const st = cloneState(state);
   const events = [];
   st.tick += 1;
   const at = Math.floor(cmd.at);
@@ -296,7 +299,7 @@ export function applyCommand(state, cmd) {
 // paths; locks only open), a greedy walk solves every solvable board. Used by
 // content validation and hints.
 export function solveGreedy(state) {
-  let st = structuredClone(state);
+  let st = cloneState(state);
   const order = [];
   let guard = 4096;
   while (st.status === 'active' && guard-- > 0) {
@@ -330,7 +333,7 @@ export function migrate(state) {
     throw new Error('unsupported state version ' + state.version);
   }
   // Placeholder migration path for future versions.
-  const migrated = structuredClone(state);
+  const migrated = cloneState(state);
   migrated.version = STATE_VERSION;
   return migrated;
 }

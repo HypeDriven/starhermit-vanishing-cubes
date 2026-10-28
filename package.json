@@ -1,21 +1,19 @@
 {
   "name": "vanishing-cubes",
   "version": "1.0.0",
-  "description": "Vanishing Cubes \u2014 a 3D direction puzzle. Rotate a floating cube assembly and release blocks whose arrow path is clear.",
+  "description": "Vanishing Cubes — a 3D direction puzzle. Rotate a floating cube assembly and release blocks whose arrow path is clear.",
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "node server.js",
-    "test": "node tests/run-tests.js && node --test tests/platform.test.js tests/i18n.test.js",
-    "test:e2e": "node tests/e2e.mjs",
-    "smoke": "node tests/e2e.mjs",
-    "captures": "node tests/captures.mjs"
+    "test": "npm run test:unit && npm run test:native",
+    "test:unit": "node tests/run-tests.js && node --test tests/i18n.test.js tests/save.test.mjs",
+    "test:native": "node tests/native.mjs",
+    "test:browser": "node tools/browser-play.mjs",
+    "package": "node tools/package-web.mjs",
+    "css": "node tools/css.mjs",
+    "levels": "node tools/gen-levels.mjs"
   },
-  "engines": {
-    "node": ">=18"
-  },
-  "devDependencies": {
-    "playwright-core": "^1.62.1"
-  },
+  "engines": { "node": ">=18" },
+  "devDependencies": { "playwright-core": "^1.62.1" },
   "license": "PolyForm-Noncommercial-1.0.0"
 }
