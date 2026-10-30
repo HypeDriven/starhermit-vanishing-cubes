@@ -10,7 +10,7 @@
 
 ## 0. Vanishing Cubes on the StarHermit engine
 
-Vanishing Cubes is a StarHermit engine **script game** (engine 1.28.0, `engine.minor=30`, entry `native/main.ts`), played natively by the StarHermit client and in browsers by the engine's web runtime (the loader `index.html` and `starhermit-files.json`, written by `npm run package`).
+Vanishing Cubes is a StarHermit engine **script game** (engine 1.29.0, `engine.minor=31`, entry `native/main.ts`), played natively by the StarHermit client and in browsers by the engine's web runtime (the loader `index.html` and `starhermit-files.json`, written by `npm run package`).
 
 **Modules.** The rules (`js/rules/engine.js`, scoring, generator, rng), the session (`js/session/session.js`), the merge helpers and the content (`js/content/*`) are the browser build's ES modules, imported unchanged (engine.js clones states as JSON: the native interpreter has no structuredClone). `js/content/generated.js` holds the 40 Journey stages and the 8 challenge boards precomputed by `tools/gen-levels.mjs` (generation takes seconds natively); a unit test checks it matches the generator. Practice and Daily boards are generated on a `starhermit:script` worker (`native/gen-worker.js`) with a "Preparing the board…" line after 300 ms. `native/render.ts` draws the sculpture on `starhermit:scene`, `native/screens.ts` the UI on `starhermit:ui` (styles: `tools/ui-style.css` → `assets/ui-style.json`), `native/audio.ts` the sound, `native/platform.ts` saves and the platform, `native/i18n.ts` the nine locales.
 
