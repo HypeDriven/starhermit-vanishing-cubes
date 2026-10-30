@@ -398,10 +398,10 @@ export function applyLook(next: Look): void {
     denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: g.ao === "high" ? 6 : 4, rings: 2, samples: g.ao === "high" ? 16 : 8 },
   };
   renderer.bloom = g.bloom ? { strength: 0.4, radius: 0.5, threshold: 2.2, resolution: g.budget.bloomRes } : null;
-  // GradeShader (display space): a 0.3-weight smoothstep S-curve (slope 0.15), saturation 1.1, cool shadows /
+  // GradeShader (display space): a 0.3-weight smoothstep S-curve, saturation 1.1, cool shadows /
   // warm highlights by a smoothstep of luma 0.25–0.85, a 0.16 vignette from 0.4 to 0.9
   renderer.grade = g.grade ? {
-    space: "display", contrast: 0.15, saturation: 1.1, split: [0.25, 0.85], shadows: [0.97, 0.99, 1.04], highlights: [1.03, 1.0, 0.97],
+    space: "display", contrastCurve: "s", contrast: 0.3, saturation: 1.1, split: [0.25, 0.85], shadows: [0.97, 0.99, 1.04], highlights: [1.03, 1.0, 0.97],
     vignette: { amount: 0.16, inner: 0.4, outer: 0.9 },
   } : null;
   renderer.antialias = g.antialias;
