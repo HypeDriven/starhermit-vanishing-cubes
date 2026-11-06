@@ -1,71 +1,32 @@
-// Localization: the browser build's tables (js/ui/strings.js: flat keys and
-// per-id maps for levels, chapters, tips, lessons, lesson steps, challenges,
-// themes, achievements; js/ui/platform-strings.js for the StarHermit lines)
-// plus js/ui/engine-strings.js (what this client adds or rewords), in the nine
-// locales, following the runtime's interface language (Options › Language,
-// else the account's preferred language, else the device's). Everything is
-// drawn through T() each frame, so a change shows at once without restarting
-// the round (what i18n.js onLanguage re-rendering did).
-import { onPreferencesChange, preferences } from "starhermit:engine";
+// Localization: assets/strings.json (generated from the browser build's tables:
+// flat keys plus group.id keys for levels, chapters, tips, lessons, lesson steps,
+// challenges, themes and achievements, in the nine locales) on the engine's
+// strings, which follow the interface language the runtime reports (Options ›
+// Language, else the account's preferred language, else the device's), own the
+// locale fallback and the account strings (`starhermit.*`). Everything is drawn
+// through T() each frame, so a change shows at once without restarting the
+// round (what i18n.js onLanguage re-rendering did).
+import { strings } from "starhermit:engine";
 import * as ui from "starhermit:ui";
-import { STRINGS } from "../js/ui/strings.js";
-import { PLATFORM_STRINGS } from "../js/ui/platform-strings.js";
-import { ENGINE_STRINGS } from "../js/ui/engine-strings.js";
 import type { Explain, Level } from "./game.ts";
 
-type Table = Record<string, unknown>;
-const BASE = STRINGS as unknown as Record<string, Table>;
-const EXTRA = ENGINE_STRINGS as unknown as Record<string, Table>;
-const TABLES: Record<string, Table> = Object.fromEntries(Object.keys(BASE).map((l) => [l, { ...BASE[l], ...(EXTRA[l] ?? EXTRA["en-US"]) }]));
-const PLAT = PLATFORM_STRINGS as unknown as Record<string, Record<string, string>>;
-const EN = TABLES["en-US"]!;
-export const LOCALES = Object.keys(TABLES);
-let locale = "";
-let dict: Table = EN;
-
-/** The closest shipped locale for a BCP 47 tag. */
-export function matchLocale(tag: string): string {
-  const t = String(tag || "en-US");
-  const exact = LOCALES.find((l) => l.toLowerCase() === t.toLowerCase());
-  if (exact) return exact;
-  const lang = t.split(/[-_]/)[0]!.toLowerCase();
-  const region = (t.split(/[-_]/)[1] ?? "").toUpperCase();
-  if (lang === "en") return ["GB", "IE", "AU", "NZ"].includes(region) ? "en-GB" : "en-US";
-  if (lang === "es") return region === "ES" ? "es-ES" : "es-419";
-  if (lang === "fr") return region === "CA" ? "fr-CA" : "fr-FR";
-  if (lang === "pt") return "pt-BR";
-  if (lang === "de") return "de-DE";
-  if (lang === "it") return "it-IT";
-  return "en-US";
-}
-function apply(tag: string): void {
-  const loc = matchLocale(tag);
-  if (loc === locale) return;
-  locale = loc;
-  dict = TABLES[loc]!;
-  try { ui.setLanguage(locale); } catch { /* older hosts */ }
-}
-apply(preferences().language);
-onPreferencesChange((p) => apply(p.language));
+strings.load("assets/strings.json");
+strings.defaultLocale = "en-US";
+ui.setLanguage(strings.locale);
+strings.onChange((locale) => ui.setLanguage(locale));
 
 export type Vars = Record<string, string | number>;
-const fill = (s: string, vars?: Vars | null): string =>
-  vars ? s.replace(/\{(\w+)\}/g, (m, k: string) => (vars[k] != null ? String(vars[k]) : m)) : s;
 /** i18n.js t(). */
-export function T(key: string, vars?: Vars | null): string { return fill(String(dict[key] ?? EN[key] ?? key), vars); }
-export const hasKey = (key: string): boolean => typeof EN[key] === "string";
-/** i18n.js tn(): a content name from a nested map. */
-export function tn<V>(group: string, id: string | number, fallback: V): V {
-  const own = (dict[group] as Record<string, unknown> | undefined)?.[id];
-  if (own != null) return own as V;
-  const en = (EN[group] as Record<string, unknown> | undefined)?.[id];
-  return (en != null ? en : fallback) as V;
+export function T(key: string, vars?: Vars | null): string { return strings.t(key, vars ?? undefined); }
+export const hasKey = (key: string): boolean => strings.has(key);
+/** i18n.js tn(): a content name by group and id (an achievement is [name, description]). */
+export function tn<V extends string | string[]>(group: string, id: string | number, fallback: V): V {
+  const key = `${group}.${id}`;
+  if (typeof fallback === "string") return (strings.has(key) ? strings.t(key) : fallback) as V;
+  return fallback.map((text, i) => (strings.has(`${key}.${i}`) ? strings.t(`${key}.${i}`) : text)) as V;
 }
-/** platform-strings.js. */
-export function S(key: string, vars?: Vars): string {
-  const table = PLAT[locale] ?? PLAT["en-US"]!;
-  return fill(table[key] ?? PLAT["en-US"]![key] ?? key, vars);
-}
+/** The engine's account strings (signIn, invite, inviteCopied, inviteLink, signedOut, leaderboard…). */
+export function S(key: string, vars?: Vars): string { return strings.t(`starhermit.${key}`, vars); }
 /** i18n.js levelName. */
 export function levelName(level: { id: string; name: string } | null): string {
   if (!level) return "";

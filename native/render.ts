@@ -6,7 +6,7 @@
 // shadow disc; the board (rounded extruded cubes with panel textures, arrow /
 // stone / core instanced meshes, direction chevrons, lock bands, path preview
 // dots, the selection outline, lift and facing ring, hover / select / locked /
-// key-pulse tints, release fly-outs, unlock flashes, invalid shakes), pooled
+// key-pulse tints, release fly-outs, unlock flashes, invalid shakes), native
 // spark bursts and ambient motes, and the authored orbit camera on critically
 // damped springs, fitted to the playfield the HUD leaves free (a lens shift,
 // setViewOffset, centres it there; picking uses the same camera).
@@ -26,7 +26,7 @@ import {
   ACESFilmicToneMapping, BackSide, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, CircleGeometry, Color, ConeGeometry,
   DirectionalLight, DoubleSide, EdgesGeometry, ExtrudeGeometry, FogExp2, Group, HemisphereLight, InstancedMesh, LineBasicMaterial,
   LineSegments, Matrix4, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, OctahedronGeometry,
-  PMREMGenerator, PerspectiveCamera, Points, PointsMaterial, Quaternion, Raycaster, RepeatWrapping, RingGeometry, RoomEnvironment,
+  PMREMGenerator, ParticleEmitter, PerspectiveCamera, Points, PointsMaterial, Quaternion, Raycaster, RepeatWrapping, RingGeometry, RoomEnvironment,
   SRGBColorSpace, ShaderMaterial, Shape, SphereGeometry, TorusGeometry, Vector2, Vector3, pointerToNdc, renderer, scene,
   type Material, type Texture,
 } from "starhermit:scene";
@@ -373,7 +373,7 @@ export function applyLook(next: Look): void {
   const g = look;
   renderer.shadowMap.enabled = g.shadows > 0;
   keyLight.castShadow = g.shadows > 0;
-  if (g.shadows > 0) keyLight.shadow.mapSize = g.shadows;
+  if (g.shadows > 0) keyLight.shadow.mapSize = g.shadows; // the level's size: at minor 23+ the engine keeps the game's
   if (g.reflections) {
     if (!envRoom) {
       try {
@@ -393,11 +393,12 @@ export function applyLook(next: Look): void {
   if (envArgs && (!prev || prev.preset !== g.preset)) buildEnvironment(...envArgs);
   else if (skyU.uClouds) skyU.uClouds.value = g.detailed ? 1 : 0;
   if (board) rebuildBoardLook();
-  renderer.ao = g.ao === "off" ? null : {
-    blendIntensity: 0.85, radius: 0.55, distanceExponent: 1.4, thickness: 1.2, scale: 1, samples: g.ao === "high" ? 16 : 8, resolution: g.budget.aoRes,
-    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: g.ao === "high" ? 6 : 4, rings: 2, samples: g.ao === "high" ? 16 : 8 },
+  const ao = g.ao, fullAo = !!ao && ao.resolution >= 1; // the engine's AO "high" is full resolution
+  renderer.ao = ao && {
+    blendIntensity: 0.85, radius: 0.55, distanceExponent: 1.4, thickness: 1.2, scale: 1, samples: ao.samples, resolution: ao.resolution,
+    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: fullAo ? 6 : 4, rings: 2, samples: ao.denoiseSamples },
   };
-  renderer.bloom = g.bloom ? { strength: 0.4, radius: 0.5, threshold: 2.2, resolution: g.budget.bloomRes } : null;
+  renderer.bloom = g.bloom === null ? null : { strength: 0.4, radius: 0.5, threshold: 2.2, resolution: g.bloom };
   // GradeShader (display space): a 0.3-weight smoothstep S-curve, saturation 1.1, cool shadows /
   // warm highlights by a smoothstep of luma 0.25–0.85, a 0.16 vignette from 0.4 to 0.9
   renderer.grade = g.grade ? {
@@ -408,22 +409,29 @@ export function applyLook(next: Look): void {
 }
 
 // ---------------------------------------------------------------- vfx.js
-const CAPACITY = 2048, MOTE_MAX = 240;
-let vfxPoints: Points, vfxPos: Float32Array, vfxCol: Float32Array, vfxVel: Float32Array, vfxLife: Float32Array, vfxActive = 0, vfxMultiplier = 1;
+const MOTE_MAX = 240;
+// The sparks: one emitter per burst kind (speed, life and colour are the emitter's). Directions over the whole sphere with
+// the old upward bias of a quarter of the speed; the old per-frame ×0.995 darkening over the mean life as a colour ramp.
+let sparkMat: PointsMaterial, releaseSparks: ParticleEmitter, unlockSparks: ParticleEmitter, completeSparks: ParticleEmitter, releaseColor = 0, vfxMultiplier = 1;
+const RELEASE_LIFE = 0.6, UNLOCK_LIFE = 0.7, COMPLETE_LIFE = 1.2;
+const sparkColors = (hex: number, ttl: number): Color[] => [hexColor(hex), hexColor(hex).multiplyScalar(Math.pow(0.995, 60 * ttl))];
+function sparkEmitter(seed: number, capacity: number, hex: number, speed: number, ttl: number): ParticleEmitter {
+  const e = new ParticleEmitter({
+    capacity, material: sparkMat, seed, life: [ttl * 0.7, ttl * 1.3], speed: [speed * 0.6, speed * 1.4], spread: Math.PI,
+    velocity: [0, speed * 0.25, 0], velocitySpread: [0, speed * 0.1, 0], gravity: [0, -2.2, 0], colors: sparkColors(hex, ttl),
+  });
+  e.frustumCulled = false;
+  e.renderOrder = 10;
+  scene.add(e);
+  return e;
+}
 let motes: Points, motesMat: PointsMaterial, motePos: Float32Array, moteSeeds: Float32Array, moteCount = 0, moteTime = 0;
 let visible3d = false;
 function buildVfx(): void {
-  vfxPos = new Float32Array(CAPACITY * 3).fill(-9999);
-  vfxCol = new Float32Array(CAPACITY * 3);
-  vfxVel = new Float32Array(CAPACITY * 3);
-  vfxLife = new Float32Array(CAPACITY);
-  const geo = new BufferGeometry();
-  geo.setAttribute("position", new BufferAttribute(vfxPos, 3));
-  geo.setAttribute("color", new BufferAttribute(vfxCol, 3));
-  vfxPoints = new Points(geo, new PointsMaterial({ size: 0.2, map: sprite, alphaTest: 0.02, vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false, sizeAttenuation: true }));
-  vfxPoints.frustumCulled = false;
-  vfxPoints.renderOrder = 10;
-  scene.add(vfxPoints);
+  sparkMat = new PointsMaterial({ size: 0.2, map: sprite, alphaTest: 0.02, transparent: true, opacity: 0.9, depthWrite: false, sizeAttenuation: true });
+  releaseSparks = sparkEmitter(1, 256, 0xffffff, 2.6, RELEASE_LIFE);
+  unlockSparks = sparkEmitter(2, 156, 0x7dffb0, 2.2, UNLOCK_LIFE);
+  completeSparks = sparkEmitter(3, 270, 0xffd27a, 4.5, COMPLETE_LIFE);
   motePos = new Float32Array(MOTE_MAX * 3);
   moteSeeds = new Float32Array(MOTE_MAX * 4);
   let s = 1337;
@@ -440,40 +448,8 @@ function buildVfx(): void {
   scene.add(motes);
   writeMotes();
 }
-let fx = 0x2545f491;
-const frand = (): number => { fx ^= fx << 13; fx ^= fx >>> 17; fx ^= fx << 5; return ((fx >>> 0) % 1000000) / 1000000; };
-function burst(pos: Vector3, colorHex: number, count: number, speed: number, ttl: number): void {
-  if (reducedMotion) return;
-  const n = Math.round(count * vfxMultiplier), c = hexColor(colorHex);
-  for (let k = 0; k < n && vfxActive < CAPACITY; k++) {
-    const i = vfxActive++, i3 = i * 3;
-    const sp = speed * (0.6 + frand() * 0.8), u = frand() * 2 - 1, th = frand() * Math.PI * 2, r = Math.sqrt(1 - u * u);
-    vfxPos[i3] = pos.x; vfxPos[i3 + 1] = pos.y; vfxPos[i3 + 2] = pos.z;
-    vfxVel[i3] = r * Math.cos(th) * sp; vfxVel[i3 + 1] = u * sp + sp * 0.25; vfxVel[i3 + 2] = r * Math.sin(th) * sp;
-    vfxCol[i3] = c.r; vfxCol[i3 + 1] = c.g; vfxCol[i3 + 2] = c.b;
-    vfxLife[i] = ttl * (0.7 + frand() * 0.6);
-  }
-}
-function updateVfx(dt: number): void {
-  if (vfxActive === 0) return;
-  for (let i = vfxActive - 1; i >= 0; i--) {
-    vfxLife[i]! -= dt;
-    const i3 = i * 3;
-    if (vfxLife[i]! <= 0) {
-      const l = --vfxActive, l3 = l * 3;
-      if (i !== l) {
-        for (let k = 0; k < 3; k++) { vfxPos[i3 + k] = vfxPos[l3 + k]!; vfxVel[i3 + k] = vfxVel[l3 + k]!; vfxCol[i3 + k] = vfxCol[l3 + k]!; }
-        vfxLife[i] = vfxLife[l]!;
-      }
-      vfxPos[l3] = 0; vfxPos[l3 + 1] = -9999; vfxPos[l3 + 2] = 0;
-      continue;
-    }
-    vfxPos[i3]! += vfxVel[i3]! * dt; vfxPos[i3 + 1]! += vfxVel[i3 + 1]! * dt; vfxPos[i3 + 2]! += vfxVel[i3 + 2]! * dt;
-    vfxVel[i3 + 1]! -= 2.2 * dt;
-    vfxCol[i3]! *= 0.995; vfxCol[i3 + 1]! *= 0.995; vfxCol[i3 + 2]! *= 0.995;
-  }
-  (vfxPoints.geometry.getAttribute("position") as BufferAttribute).needsUpdate = true;
-  (vfxPoints.geometry.getAttribute("color") as BufferAttribute).needsUpdate = true;
+function burst(e: ParticleEmitter, x: number, y: number, z: number, count: number): void {
+  if (!reducedMotion) e.burst(Math.round(count * vfxMultiplier), [x, y, z]);
 }
 function writeMotes(): void {
   const t = moteTime;
@@ -510,7 +486,7 @@ function cubeMaterials(t: Theme): Pick<Board, "arrowMat" | "stoneMat" | "coreMat
     delete q.clearcoat; delete q.clearcoatRoughness;
     return new MeshStandardMaterial(q);
   };
-  const glow = look!.bloom ? 1.8 : 1;
+  const glow = look!.bloom !== null ? 1.8 : 1;
   return {
     arrowMat: mat({ map: cachedPanel(`arrow:${px}:${detailed}`, () => panelTexture({ base: "#f6f8fa", grain: detailed ? 1400 : 0, px })),
       roughness: coat ? 0.42 : 0.55, metalness: 0, clearcoat: coat ? 0.65 : 0, clearcoatRoughness: 0.28 }, true),
@@ -629,11 +605,14 @@ export function syncBoard(state: State, events: RulesEvent[], vfx = true): void 
   refreshSelection();
   if (!vfx) return;
   for (const ev of events) {
-    if (ev.type === "release" && ev.pos) burst(new Vector3(ev.pos[0] * SPACING, ev.pos[1] * SPACING, ev.pos[2] * SPACING), b.theme.cube.path, 18, 2.6, 0.6);
+    if (ev.type === "release" && ev.pos) {
+      if (b.theme.cube.path !== releaseColor) { releaseColor = b.theme.cube.path; releaseSparks.set({ colors: sparkColors(releaseColor, RELEASE_LIFE) }); }
+      burst(releaseSparks, ev.pos[0] * SPACING, ev.pos[1] * SPACING, ev.pos[2] * SPACING, 18);
+    }
     else if (ev.type === "unlock" && ev.cubeId) {
       const r = b.records.get(ev.cubeId);
-      if (r) burst(new Vector3(r.pos[0] * SPACING, r.pos[1] * SPACING, r.pos[2] * SPACING), 0x7dffb0, 26, 2.2, 0.7);
-    } else if (ev.type === "complete") burst(new Vector3(0, 0, 0), 0xffd27a, 90, 4.5, 1.2);
+      if (r) burst(unlockSparks, r.pos[0] * SPACING, r.pos[1] * SPACING, r.pos[2] * SPACING, 26);
+    } else if (ev.type === "complete") burst(completeSparks, 0, 0, 0, 90);
   }
 }
 const tColor = new Color(), tFlash = new Color();
@@ -802,7 +781,6 @@ export function update(dt: number): void {
     const s = 1 / 60;
     phase += s;
     if (board) updateBoard(s);
-    updateVfx(s);
     if (moving && moteCount) { moteTime += s; writeMotes(); }
     if (moving && skyU.uTime) skyU.uTime.value = (skyU.uTime.value as number) + s;
     if (moving) for (const a of envAnimated) { a.obj.position.y = a.baseY + Math.sin(phase * a.speed + a.phase) * a.amp; a.obj.rotation.y += a.spin * s; }

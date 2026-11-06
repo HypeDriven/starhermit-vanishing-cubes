@@ -1,0 +1,25 @@
+# The challenge "Exact Measure" (a fixed seed): the board orbit, motes, sparks and fly-outs of three releases, for tools/engine-tier-bench.mjs.
+# viewport 1280x800@1
+frames 90
+click =All modes
+frames 20
+click Challenge
+frames 20
+click =Exact Measure
+frames 60
+key Enter 1
+frames 120
+measure start
+key Enter 1
+frames 6
+key Enter 1
+frames 200
+key Enter 1
+frames 6
+key Enter 1
+frames 200
+key Enter 1
+frames 6
+key Enter 1
+frames 180
+measure stop

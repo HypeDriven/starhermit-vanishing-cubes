@@ -12,7 +12,7 @@
 // and the score post, the resumable round snapshot, and the lifecycle (a
 // hidden window pauses the round). Screens are drawn by screens.ts
 // (starhermit:ui), the sculpture by render.ts (starhermit:scene).
-import { frame, onFixedUpdate, onPreferencesChange, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate, clipboard } from "starhermit:engine";
+import { afterRender, frame, levelSettings, onFixedUpdate, onPreferencesChange, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate, clipboard } from "starhermit:engine";
 import { onAction, onPointerButton, onPointerMove, onTouch, value, vibrate } from "starhermit:input";
 import * as ui from "starhermit:ui";
 import { onSessionEnded, requestSignIn } from "starhermit:platform";
@@ -86,9 +86,8 @@ export function toast(text: string, ms = 2600, sound = true): void {
   if (app.toasts.length > 3) app.toasts.shift();
   announce(text);
 }
-const pending: (() => void)[] = [];
-/** A widget's press, run once the frame's UI is built. */
-export function later(fn: () => void): void { pending.push(fn); }
+/** A widget's press, run once the frame's UI is built, before the scene is drawn. */
+export function later(fn: () => void): void { afterRender(fn); }
 export function openScreen(s: Screen, focus: string | null = null): void {
   app.screen = s;
   app.openedFrame = frame().frame;
@@ -426,9 +425,9 @@ function finishRound(): void {
     : nextLesson ? "nextLesson" : mode === "practice" ? "playAgain" : "modes";
   const res: Results = { result, level, mode, achievements: fresh, rank, previousBest: prevBest, nextLabel, lb: null };
   if (s.ranked && platform.signedIn()) {
-    res.lb = { key: "lbPosting" };
+    res.lb = { key: "leaderboardPosting" };
     void platform.postScore(result.score).then((r) => {
-      res.lb = !r.posted ? { key: "lbNotPosted" } : r.rank ? { key: "lbRank", vars: { rank: r.rank } } : { key: "lbPosted" };
+      res.lb = !r.posted ? { key: "leaderboardNotPosted" } : r.rank ? { key: "leaderboardRank", vars: { rank: r.rank } } : { key: "leaderboardPosted" };
       if (app.results === res) announce(S(res.lb.key, res.lb.vars));
     });
   }
@@ -608,7 +607,7 @@ export function signIn(): void { void requestSignIn().catch(() => undefined); }
 export function invite(): void {
   const link = platform.inviteLink();
   if (!link) return;
-  try { clipboard.writeText(link); toast(S("inviteCopied")); } catch { toast(S("inviteFailed", { link }), 6000); }
+  try { clipboard.writeText(link); toast(S("inviteCopied")); } catch { toast(S("inviteLink", { link }), 6000); }
 }
 
 // ------------------------------------------------------------------ keys and pads (main.js onKeyDown / pollGamepad)
@@ -752,13 +751,12 @@ export function timeLeftMs(): number | null {
 }
 
 // ------------------------------------------------------------------ boot and lifecycle
-let lookKey = "";
+let lookKey: string | null = null;
 function applyLook(): void {
   const f = frame();
-  const k = `${f.quality}:${f.levelIndex}`;
-  if (k === lookKey) return;
-  lookKey = k;
-  render.applyLook(lookFor(f.quality, f.levelIndex));
+  if (f.level === lookKey) return;
+  lookKey = f.level;
+  render.applyLook(lookFor(levelSettings(f.level)));
 }
 onStart(() => {
   setFixedRate(STEP_RATE);
@@ -766,6 +764,7 @@ onStart(() => {
   platform.initPlatform();
   render.setReducedMotion(preferences().reducedMotion);
   applyLook();
+  audio.loadSfx();
   audio.setCaptions(!!settings().captions);
   audio.onCaption((key) => {
     const k = "cap_" + key.replace(/-/g, "_");
@@ -798,8 +797,9 @@ onRender(() => {
   const wasPlaying = (app.phase === "active" || app.phase === "countdown") && !app.modal;
   render.update(frameDt);
   drawScreens();
-  for (const fn of pending.splice(0)) fn();
-  pointerInput(wasPlaying);
-  flushAnnouncements();
+  afterRender(() => { // after the frame's presses (added earlier), as the old queue ran, before the scene is drawn
+    pointerInput(wasPlaying);
+    flushAnnouncements();
+  });
 });
 export type { ResultEnvelope };

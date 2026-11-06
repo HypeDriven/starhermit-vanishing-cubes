@@ -33,12 +33,10 @@ import { token } from "./style.ts";
 interface Layout { lw: number; lh: number; sc: number; ox: number; oy: number; wide: boolean; phone: boolean; short: boolean }
 const lastSize = new Map<string, ui.Rect>();
 function layoutNow(): Layout {
-  const f = frame();
-  const sc = ui.preferences().scale;
-  const sa = f.safeArea;
-  const lw = Math.max(1, (f.width - sa.left - sa.right) / sc), lh = Math.max(1, (f.height - sa.top - sa.bottom) / sc);
+  const v = ui.viewport!();
+  const lw = Math.max(1, v.width), lh = Math.max(1, v.height);
   const short = lh <= 500 && lw > lh;
-  return { lw, lh, sc, ox: sa.left, oy: sa.top, wide: lw >= 1024 && !short, phone: lw <= 700 && lh >= lw, short };
+  return { lw, lh, sc: v.scale, ox: v.x, oy: v.y, wide: lw >= 1024 && !short, phone: lw <= 700 && lh >= lw, short };
 }
 const textWidth = (text: string, style: string, kind?: "button"): number =>
   ui.measureText(text, { ...(kind ? { kind } : {}), style: [style] }).width / ui.preferences().scale;
@@ -66,18 +64,12 @@ function button(b: Btn): void {
 }
 /** .screen-actions / flex-wrap rows: buttons at their widths in rows that wrap at `width`. */
 function flow(label: string, list: Btn[], width: number, gap = 8, align: ui.Align = "center"): ui.Rect {
-  const rows: Btn[][] = [[]];
-  let used = 0;
-  const bw = (b: Btn): number => Math.min(width, b.width ?? buttonWidth(b.text, b.style ?? "btn"));
-  for (const b of list) {
-    const w = bw(b);
-    if (rows[rows.length - 1]!.length && used + gap + w > width) { rows.push([]); used = 0; }
-    used += (rows[rows.length - 1]!.length ? gap : 0) + w;
-    rows[rows.length - 1]!.push(b);
-  }
-  return ui.column(label, () => {
-    rows.forEach((row, ri) => ui.row(`${label}-r${ri}`, () => { for (const b of row) button({ ...b, width: bw(b) }); }, { spacing: gap }));
-  }, { spacing: gap, width, align });
+  return ui.row(label, () => {
+    for (const b of list) {
+      const w = b.width ?? (buttonWidth(b.text, b.style ?? "btn") > width ? width : null);
+      button(w === null ? b : { ...b, width: Math.min(width, w) });
+    }
+  }, { wrap: true, width, gap, justify: align, align: "center" });
 }
 /** A wrapping check box (ui.checkbox labels do not wrap on phones). */
 function toggleRow(id: string, label: string, on: boolean, w: number, set: (v: boolean) => void): void {
