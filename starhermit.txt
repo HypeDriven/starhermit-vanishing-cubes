@@ -59,3 +59,7 @@ engine.gamepad.orbit_left=LeftStickLeft
 engine.gamepad.orbit_right=LeftStickRight
 engine.gamepad.orbit_up=LeftStickUp
 engine.gamepad.orbit_down=LeftStickDown
+
+# Game language (saved per player); Automatic follows the account/device.
+control.localization=F2 | Language
+engine.group.localization=Interface

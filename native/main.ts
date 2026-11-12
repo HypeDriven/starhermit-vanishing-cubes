@@ -1,3 +1,4 @@
+import { withLanguageRender as __l10nRender } from "./l10n/menu.ts";
 // Vanishing Cubes on the StarHermit engine: the entry module (starhermit.txt
 // engine.entry), played natively by the StarHermit client and in browsers by
 // the engine's web runtime. The rules, generator, content and session are the
@@ -793,7 +794,7 @@ onUpdate((dt) => {
   const t = now();
   app.toasts = app.toasts.filter((x) => x.until > t);
 });
-onRender(() => {
+onRender(__l10nRender(() => {
   const wasPlaying = (app.phase === "active" || app.phase === "countdown") && !app.modal;
   render.update(frameDt);
   drawScreens();
@@ -801,5 +802,9 @@ onRender(() => {
     pointerInput(wasPlaying);
     flushAnnouncements();
   });
-});
+}));
 export type { ResultEnvelope };
+
+// localization-runtime:menu
+import { installLanguageMenu as __installLanguageMenu } from "./l10n/menu.ts";
+__installLanguageMenu(false);
