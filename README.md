@@ -3,7 +3,7 @@
 A three-dimensional direction puzzle. Rotate a floating cube assembly in a pale
 sky and release blocks whose arrow path is clear. Expose the core.
 
-A StarHermit engine script game (engine 1.38.0, `engine.minor=38`): see
+A StarHermit engine script game (engine 1.39.0, `engine.minor=39`): see
 `spec.md` §0 for how it is built.
 
 - `npm test` — unit tests and the native engine checks (needs the runtime at
