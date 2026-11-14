@@ -1,5 +1,7 @@
 # Vanishing Cubes
 
+**[▶ Play Vanishing Cubes on StarHermit](https://dashboard.starhermit.com/play/fcdbd656-94f4-4c1f-917b-e452c079e86b)**
+
 A three-dimensional direction puzzle. Rotate a floating cube assembly in a pale
 sky and release blocks whose arrow path is clear. Expose the core.
 
