@@ -83,8 +83,7 @@ function flushAnnouncements(): void {
 /** a11y.js toast: 2.6 s (captions 1.2 s). */
 export function toast(text: string, ms = 2600, sound = true): void {
   if (sound) audio.play("toast");
-  app.toasts.push({ text, until: now() + ms / 1000 });
-  if (app.toasts.length > 3) app.toasts.shift();
+  ui.toast!(text, { duration: ms / 1000, position: "top", offset: 70, style: "toast", dismissible: false });
   announce(text);
 }
 /** A widget's press, run once the frame's UI is built, before the scene is drawn. */

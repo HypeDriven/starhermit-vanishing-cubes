@@ -1,3 +1,4 @@
+import { bindings } from "starhermit:input";
 import { localizedStyle as __l10nStyle } from "./l10n/font.ts";
 import { localizedDrawOptions as __l10nDrawOptions } from "./l10n/font.ts";
 // localization-runtime:attached
@@ -128,7 +129,7 @@ function mixHex(a: number, b: number, k: number): string {
 
 // ------------------------------------------------------------------ the frame
 const TOP_H = 52;
-export function drawScreens(): void {
+function drawScreensImmediate(): void {
   const L = layoutNow();
   const f = frame();
   const inPlay = !!app.session && ["countdown", "active", "paused", "resolving"].includes(app.phase) && !app.screen;
@@ -139,7 +140,6 @@ export function drawScreens(): void {
   if (app.screen) screen(L, app.screen);
   if (app.phase === "preparing") overlayLine(L, T("preparing"), preparingVisible());
   if (app.modal) modal(L, app.modal);
-  toasts(L, inPlay);
   if (app.focusNext && primaryPointer() !== "coarse") {
     const age = f.frame - app.openedFrame;
     if (age >= 1) ui.setFocus(app.focusNext);
@@ -725,21 +725,15 @@ function settingsBody(w: number): void {
 }
 function leaveRoundQuiet(): void { app.session = null; app.phase = "menu"; render.clearBoard(); }
 
-// ------------------------------------------------------------------ toasts and the preparing line
-function toasts(L: Layout, inPlay: boolean): void {
-  if (!app.toasts.length) return;
-  const w = Math.min(L.lw - 32, 520);
-  ui.place("toasts", { anchor: "top", y: inPlay ? TOP_H + 58 : TOP_H + 12 }, () => {
-    ui.column("toasts-col", () => {
-      app.toasts.forEach((t, i) => {
-        const tw = Math.min(w, textWidth(t.text, "toast-text") + 36);
-        ui.column(`toast-${i}`, () => para(t.text, tw - 32, "toast-text", `toast-text-${i}`), { style: "toast", width: tw, align: "center" });
-      });
-    }, { spacing: 6, align: "center", width: w });
-  });
-}
 function overlayLine(L: Layout, text: string, show: boolean): void {
   if (!show) return;
   const w = Math.min(L.lw - 32, textWidth(text, "toast-text") + 40);
   ui.place("preparing", "center", () => { ui.column("preparing-col", () => para(text, w - 32, "toast-text", "preparing-text"), { style: "toast", width: w, align: "center" }); });
+}
+
+export function drawScreens(): void {
+  if (app.screen !== "help") { drawScreensImmediate(); return; }
+  const actions = ["confirm","nav_next","nav_prev","rotate_left","rotate_right","cam_reset","orbit_left","orbit_right","orbit_up","orbit_down","undo","hint","pause","cancel"];
+  const version = JSON.stringify([(app as any).settings ?? (app as any).options ?? {}, (platform as any).options ?? {}, actions.map((action) => bindings(action))]);
+  ui.retain!("help-screen", version, drawScreensImmediate);
 }

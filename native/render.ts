@@ -23,13 +23,9 @@
 //
 // Differences: the sky's GLSL is WGSL; canvases are OffscreenCanvas.
 import {
-  ACESFilmicToneMapping, BackSide, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, CircleGeometry, Color, ConeGeometry,
-  DirectionalLight, DoubleSide, EdgesGeometry, ExtrudeGeometry, FogExp2, Group, HemisphereLight, InstancedMesh, LineBasicMaterial,
-  LineSegments, Matrix4, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, OctahedronGeometry,
-  PMREMGenerator, ParticleEmitter, PerspectiveCamera, Points, PointsMaterial, Quaternion, Raycaster, RepeatWrapping, RingGeometry, RoomEnvironment,
-  SRGBColorSpace, ShaderMaterial, Shape, SphereGeometry, TorusGeometry, Vector2, Vector3, pointerToNdc, renderer, scene,
-  type Material, type Texture,
+  ACESFilmicToneMapping, BackSide, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, CircleGeometry, Color, ConeGeometry, DirectionalLight, DoubleSide, EdgesGeometry, ExtrudeGeometry, FogExp2, Group, HemisphereLight, InstancedMesh, LineBasicMaterial, LineSegments, Matrix4, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, OctahedronGeometry, PMREMGenerator, PerspectiveCamera, Points, PointsMaterial, Quaternion, Raycaster, RepeatWrapping, RingGeometry, RoomEnvironment, SRGBColorSpace, ShaderMaterial, Shape, SphereGeometry, TorusGeometry, Vector2, Vector3, pointerToNdc, renderer, scene, type Material, type Texture,
 } from "starhermit:scene";
+import { GPUParticleEmitter } from "starhermit:particles";
 import { OffscreenCanvas } from "starhermit:canvas";
 import { Engine, RngClass, type Cube, type RulesEvent, type State, type Theme, type Vec3i } from "./game.ts";
 import type { Look } from "./quality.ts";
@@ -412,11 +408,11 @@ export function applyLook(next: Look): void {
 const MOTE_MAX = 240;
 // The sparks: one emitter per burst kind (speed, life and colour are the emitter's). Directions over the whole sphere with
 // the old upward bias of a quarter of the speed; the old per-frame ×0.995 darkening over the mean life as a colour ramp.
-let sparkMat: PointsMaterial, releaseSparks: ParticleEmitter, unlockSparks: ParticleEmitter, completeSparks: ParticleEmitter, releaseColor = 0, vfxMultiplier = 1;
+let sparkMat: PointsMaterial, releaseSparks: GPUParticleEmitter, unlockSparks: GPUParticleEmitter, completeSparks: GPUParticleEmitter, releaseColor = 0, vfxMultiplier = 1;
 const RELEASE_LIFE = 0.6, UNLOCK_LIFE = 0.7, COMPLETE_LIFE = 1.2;
 const sparkColors = (hex: number, ttl: number): Color[] => [hexColor(hex), hexColor(hex).multiplyScalar(Math.pow(0.995, 60 * ttl))];
-function sparkEmitter(seed: number, capacity: number, hex: number, speed: number, ttl: number): ParticleEmitter {
-  const e = new ParticleEmitter({
+function sparkEmitter(seed: number, capacity: number, hex: number, speed: number, ttl: number): GPUParticleEmitter {
+  const e = new GPUParticleEmitter({
     capacity, material: sparkMat, seed, life: [ttl * 0.7, ttl * 1.3], speed: [speed * 0.6, speed * 1.4], spread: Math.PI,
     velocity: [0, speed * 0.25, 0], velocitySpread: [0, speed * 0.1, 0], gravity: [0, -2.2, 0], colors: sparkColors(hex, ttl),
   });
@@ -448,7 +444,7 @@ function buildVfx(): void {
   scene.add(motes);
   writeMotes();
 }
-function burst(e: ParticleEmitter, x: number, y: number, z: number, count: number): void {
+function burst(e: GPUParticleEmitter, x: number, y: number, z: number, count: number): void {
   if (!reducedMotion) e.burst(Math.round(count * vfxMultiplier), [x, y, z]);
 }
 function writeMotes(): void {
