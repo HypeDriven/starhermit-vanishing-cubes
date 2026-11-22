@@ -402,6 +402,7 @@ export function applyLook(next: Look): void {
     vignette: { amount: 0.16, inner: 0.4, outer: 0.9 },
   } : null;
   renderer.antialias = g.antialias;
+  renderer.motionBlur = g.bloom !== null ? { intensity: 0.25, samples: 8, maxPixels: 16, targetFps: 60, camera: false } : null;
 }
 
 // ---------------------------------------------------------------- vfx.js
