@@ -12,7 +12,7 @@
     "metadataSource": "starhermit.txt",
     "createdAt": "2026-08-17T16:36:04.115434+00:00",
     "coverArtSource": "manifest",
-    "coverArtUpdatedAt": "2026-11-18T17:53:33.535148+00:00",
+    "coverArtUpdatedAt": "2026-11-22T14:26:37.636881+00:00",
     "submittedByUserId": "2712e04e-461b-4d23-81ae-e40b429128a8",
     "submittedByUsername": "starhermit",
     "hosting": {
@@ -22,9 +22,9 @@
       "pinnedCommitSha": null,
       "deployedCommitSha": null,
       "deployError": null,
-      "deployedAt": "2026-11-18T17:53:33.524192+00:00",
+      "deployedAt": "2026-11-22T14:26:37.625288+00:00",
       "externalLaunchUrl": null,
-      "engineVersion": "1.44.1",
+      "engineVersion": "1.47.0",
       "deployWarning": null
     },
     "description": "Rotate a three-dimensional block sculpture and release arrow-marked cubes when their paths are clear.",
@@ -36,19 +36,19 @@
     "links": [],
     "isDisabled": false
   },
-  "publishedAt": "2026-11-18T17:53:33.509Z",
-  "sourceCommit": "174bf88c635103e0c5bbd0d8ce3565b4882be717",
-  "bytesReceived": 2343910,
-  "archiveSha256": "208bd186d0e005e4ff0ffa37fa02956d0e76fd42dbfea6277354681f749b9f21",
+  "publishedAt": "2026-11-22T14:26:38.067Z",
+  "sourceCommit": "abbfccd0d984093a00afc1c63be525c9c3a5db56",
+  "bytesReceived": 2344259,
+  "archiveSha256": "b2e8f424713ce384ebb76ce3d25bc87d03b11d6b1c7ff3389151c4b0c0a3eb92",
   "indexSha256": "4d9768bd12f7ac8d84930bb1f6a70a1e8ee41587b42a33356f87d74c68d328f8",
   "result": {
     "clientPublished": true,
     "serverImageLoaded": false,
     "imageDigest": null,
-    "bytesReceived": 2343910,
+    "bytesReceived": 2344259,
     "mode": "replace",
     "filesRemoved": 0,
-    "engineVersion": "1.44.1",
+    "engineVersion": "1.47.0",
     "deployWarning": null
   },
   "liveVerification": {
