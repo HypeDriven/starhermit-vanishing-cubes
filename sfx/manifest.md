@@ -16,9 +16,6 @@ Generated with MOSS-SoundEffect v2.0 (text-to-SFX), 48 kHz mono Opus (96 kbps VB
 | block-release.opus | Small cube popping free and whooshing away — block released along clear arrow path |
 | block-blocked.opus | Dull wooden knock, muffled thud — arrow path blocked, release rejected |
 | core-exposed.opus | Bright resonant reveal chime with airy shimmer swell — core exposed / level complete |
-| ui-tab-switch.opus | Quick light matte-plastic tab snap with a subtle second tick — switching tabs/sections |
-| ui-scroll-tick.opus | Rapid soft plastic ratchet ticks slowing to a stop — scrolling lists and level grids |
-| ui-slider-drag.opus | Smooth matte-plastic slider glide with soft friction and a muted stop — volume/quality sliders |
 | ui-panel-close.opus | Soft downward airy whoosh with a gentle low thump — drawer/panel closes |
 | ui-toast.opus | Gentle bright notification pop with an airy tail — toast/notification appears |
 | ui-pause.opus | Soft descending hush, air settling — game paused |
