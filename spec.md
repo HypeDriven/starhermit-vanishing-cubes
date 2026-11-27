@@ -10,7 +10,7 @@
 
 ## 0. Vanishing Cubes on the StarHermit engine
 
-Vanishing Cubes is a StarHermit engine **script game** (engine 1.51.0, `engine.minor=51`, entry `native/main.ts`), played natively by the StarHermit client and in browsers by the engine's web runtime (the loader `index.html` and `starhermit-files.json`, written by `npm run package`).
+Vanishing Cubes is a StarHermit engine **script game** (engine 1.53.0, `engine.minor=53`, entry `native/main.ts`), played natively by the StarHermit client and in browsers by the engine's web runtime (the loader `index.html` and `starhermit-files.json`, written by `npm run package`).
 
 **Modules.** The rules (`js/rules/engine.js`, scoring, generator, rng), the session (`js/session/session.js`), the merge helpers and the content (`js/content/*`) are the browser build's ES modules, imported unchanged (engine.js clones states as JSON: the native interpreter has no structuredClone). `js/content/generated.js` holds the 40 Journey stages and the 8 challenge boards precomputed by `tools/gen-levels.mjs` (generation takes seconds natively); a unit test checks it matches the generator. Practice and Daily boards are generated on a `starhermit:script` worker (`native/gen-worker.js`) with a "Preparing the board…" line after 300 ms. `native/render.ts` draws the sculpture on `starhermit:scene`, `native/screens.ts` the UI on `starhermit:ui` (styles: `tools/ui-style.css` → `assets/ui-style.json`), `native/audio.ts` the sound, `native/platform.ts` saves and the platform, `native/i18n.ts` the nine locales.
 
@@ -343,9 +343,9 @@ The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-S
 
 Cosmetic particle emitters use native GPU particles with automatic CPU fallback on devices or graphics tiers without GPU particle support.
 
-## Engine 1.51.0
+## Engine 1.53.0
 
-Browser play uses the WebGPU-only StarHermit 1.51.0 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+Browser play uses the WebGPU-only StarHermit 1.53.0 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
 
 The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.
 
@@ -354,3 +354,5 @@ Toasts use native engine stacking, styling, accessibility and lifetime managemen
 Browser rendering uses the engine's asynchronous pipeline creation so newly encountered materials do not stall the page. Native play retains the engine's synchronous pipeline behavior.
 
 Higher graphics tiers use native per-object motion blur for moving pieces and effects. Camera motion stays sharp, lower tiers omit the effect, and the runtime's Motion blur and Reduce motion preferences remain authoritative.
+
+On engine 1.53.0, browser play through WebGL 2 compiles a frame's shader programs together and holds that frame until they are linked, blends skinned meshes in one pass, reuses the window pass's depth, and uses a hardware WebGL 2 context when WebGPU's adapter is software.
