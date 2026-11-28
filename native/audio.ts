@@ -113,12 +113,21 @@ export function loadSfx(): void {
   for (const name of new Set(Object.values(SFX))) {
     loadClip(`sfx/${name}.opus`).then((c) => { clips.set(name, c); }, (e: unknown) => console.warn(`sfx ${name}: ${e instanceof Error ? e.message : String(e)}`));
   }
-  renderBed().then((c) => { bedClip = c; }, (e: unknown) => console.warn(`audio: ${String(e)}`));
-  renderPads().then((c) => { pads = c; }, (e: unknown) => console.warn(`audio: ${String(e)}`));
 }
 
 /** Each frame: the bed once the mixer runs, then the pads. */
+let __bedsStarted = false;
+function startBeds(): void {
+  if (__bedsStarted) return;
+  __bedsStarted = true;
+  void (async () => {
+    renderBed().then((c) => { bedClip = c; }, (e: unknown) => console.warn(`audio: ${String(e)}`));
+    renderPads().then((c) => { pads = c; }, (e: unknown) => console.warn(`audio: ${String(e)}`));
+  })();
+}
+
 export function update(dt: number): void {
+  startBeds();
   clock += dt;
   if (context.state !== "running" || !bedClip || !pads.length) return;
   if (!bedVoice) {
